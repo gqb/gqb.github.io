@@ -322,34 +322,6 @@ h3 {
   font-weight: 400;
 }
 
-.release-panel {
-  overflow: hidden;
-}
-
-.release-table {
-  min-width: 1180px;
-}
-
-.release-reason {
-  max-width: 280px;
-  color: #475467;
-  line-height: 1.5;
-  white-space: normal;
-}
-
-.release-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.release-actions .btn {
-  min-height: 32px;
-  padding: 0 10px;
-  font-size: 13px;
-}
-
 .category-list {
   display: grid;
   gap: 8px;
@@ -463,6 +435,18 @@ h3 {
 .category-action.danger:hover {
   background: var(--red-soft);
   color: var(--red);
+}
+
+.category-lock {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--gray-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .table-wrap {
@@ -915,6 +899,32 @@ h3 {
   display: block;
   margin-top: 2px;
   color: #7a271a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.pending-change-banner {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid #fedf89;
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.pending-change-banner strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.pending-change-banner span {
+  display: block;
+  margin-top: 2px;
+  color: #7a4f01;
   font-size: 13px;
   line-height: 1.45;
 }
@@ -2638,10 +2648,6 @@ svg {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
 
-  .release-panel .panel-header {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 
 /* Ant Design Pro visual pass */
@@ -3289,6 +3295,55 @@ h3 {
   .stat-card {
     border-right: 0;
     border-bottom: 1px solid var(--line);
+  }
+
+}
+
+/* Catalog page fixed work area */
+.catalog-page {
+  height: calc(100vh - 124px);
+  min-height: 520px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.catalog-page .page-header {
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.catalog-page .catalog-layout {
+  min-height: 0;
+  height: 100%;
+  align-items: stretch;
+}
+
+.catalog-page .catalog-panel {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.catalog-page .category-list,
+.catalog-page .table-wrap {
+  min-height: 0;
+  overflow: auto;
+}
+
+.catalog-page .table-wrap {
+  padding: 0 24px 24px;
+}
+
+@media (max-width: 920px) {
+  .catalog-page {
+    height: auto;
+    min-height: 0;
+  }
+
+  .catalog-page .catalog-panel {
+    max-height: none;
   }
 }
 

@@ -7,29 +7,20 @@ const versionStatus = {
   LIST_GENERATING: { label: "清单生成中", tone: "blue" },
   LIST_CONFIRMING: { label: "清单确认中", tone: "amber" },
   CONTENT_GENERATING: { label: "内容生成中", tone: "purple" },
-  READY_TO_PUBLISH: { label: "待提交上线", tone: "green" },
-  PUBLISH_CHECKING: { label: "上线校验中", tone: "blue" },
-  READY_TO_ONLINE: { label: "可上线", tone: "amber" },
+  READY_TO_PUBLISH: { label: "内容生成完成", tone: "green" },
+  PUBLISH_CHECKING: { label: "发布中", tone: "blue" },
   PUBLISH_FAILED: { label: "发布失败", tone: "red" },
-  PUBLISHED: { label: "已上线", tone: "green" },
-};
-
-const releaseStatus = {
-  CHECKING: { label: "程序校验中", tone: "blue" },
-  READY_TO_ONLINE: { label: "可上线", tone: "green" },
-  FAILED: { label: "校验失败", tone: "red" },
-  REJECTED: { label: "已驳回", tone: "red" },
-  ONLINE: { label: "已上线", tone: "green" },
+  PUBLISHED: { label: "已发布", tone: "green" },
 };
 
 const categoryStatus = {
-  ENABLED: { label: "启用", tone: "green" },
-  DISABLED: { label: "未启用", tone: "gray" },
+  ENABLED: { label: "已发布", tone: "green" },
+  DISABLED: { label: "未发布", tone: "gray" },
 };
 
 const bookStatus = {
-  PUBLISHED: { label: "线上可见", tone: "green" },
-  UNPUBLISHED: { label: "未上线", tone: "gray" },
+  PUBLISHED: { label: "最新发布版本", tone: "green" },
+  UNPUBLISHED: { label: "未发布", tone: "gray" },
 };
 
 const stageOptions = ["小学", "初中", "高中", "大学", "其他"];
@@ -39,7 +30,6 @@ const seed = {
   selectedCategoryId: "cat-hot",
   selectedTextbookId: "book-gaokao-high",
   selectedVersionId: "ver-gaokao-v2",
-  selectedReleaseStatus: "all",
   detailTab: "words",
   wordUnitFilter: "all",
   wordSearchField: "text",
@@ -142,7 +132,7 @@ const seed = {
       creator: "潘婷婷",
       createdAt: "2026-05-18 10:20",
       publishedAt: "2026-05-18 17:22",
-      releaseNote: "上线首版词书。",
+      releaseNote: "发布首版词书。",
     },
     {
       id: "ver-gaokao-v2",
@@ -166,7 +156,7 @@ const seed = {
       creator: "潘婷婷",
       createdAt: "2026-05-17 09:30",
       publishedAt: "2026-05-18 17:10",
-      releaseNote: "上线首版词书。",
+      releaseNote: "发布首版词书。",
     },
     {
       id: "ver-low-v1",
@@ -178,7 +168,7 @@ const seed = {
       creator: "潘婷婷",
       createdAt: "2026-05-17 09:45",
       publishedAt: "2026-05-18 17:12",
-      releaseNote: "上线首版词书。",
+      releaseNote: "发布首版词书。",
     },
     {
       id: "ver-pep8-v1",
@@ -247,7 +237,6 @@ const seed = {
     "ver-pep8-v1": [],
     "ver-foreign-v1": [],
   },
-  releaseRequests: [],
 };
 
 const state = structuredClone(seed);
@@ -260,8 +249,6 @@ if (initialHash.startsWith("detail/")) {
     state.selectedTextbookId = bookId;
     selectDefaultVersion(bookId);
   }
-} else if (initialHash === "release") {
-  state.page = "release";
 }
 
 function word(id, unit, text, phonetic, meaning, source, changeType, detailGenerated = true) {
@@ -472,17 +459,59 @@ function getSelectedGroups() {
 }
 
 function getVersionReleaseRequests(versionId) {
-  return state.releaseRequests.filter((item) => item.versionId === versionId).sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
+  return [];
 }
 
 function getActiveReleaseRequest(versionId) {
-  return getVersionReleaseRequests(versionId).find((item) => ["CHECKING", "READY_TO_ONLINE"].includes(item.status)) || null;
+  return null;
 }
 
 function getReleaseFailureReason(version) {
   if (!version) return "";
-  const latestFailed = getVersionReleaseRequests(version.id).find((item) => ["FAILED", "REJECTED"].includes(item.status));
-  return version.publishFailureReason || latestFailed?.reason || "";
+  return version.publishFailureReason || "";
+}
+
+function isPublishingLocked(version) {
+  return version?.status === "PUBLISH_CHECKING";
+}
+
+function hasPublishedVersion(bookId) {
+  return state.versions.some((item) => item.textbookId === bookId && item.status === "PUBLISHED");
+}
+
+function getCategoryStatusConfig(categoryId) {
+  return countPublishedBooks(categoryId) > 0 ? categoryStatus.ENABLED : categoryStatus.DISABLED;
+}
+
+function getItemPublishBadge(item, version) {
+  if (item?.publishState === "未发布") {
+    return { label: "未发布", tone: "amber" };
+  }
+  return { label: version?.status === "PUBLISHED" ? "已发布" : "未发布", tone: version?.status === "PUBLISHED" ? "green" : "amber" };
+}
+
+function markVersionPendingContentChange(summary) {
+  const version = getVersion();
+  if (!version) return;
+  version.publishFailureReason = "";
+  version.changeSummary = summary;
+  if (version.status === "PUBLISHED") {
+    version.hasPendingContentChanges = true;
+    return;
+  }
+  if (!isPublishingLocked(version)) {
+    version.status = "READY_TO_PUBLISH";
+  }
+}
+
+function markWordContentChanged(wordItem, summary) {
+  if (wordItem) wordItem.publishState = "未发布";
+  markVersionPendingContentChange(summary);
+}
+
+function markGroupContentChanged(groupItem, summary) {
+  if (groupItem) groupItem.publishState = "未发布";
+  markVersionPendingContentChange(summary);
 }
 
 function getFilteredGroups(groups) {
@@ -505,11 +534,11 @@ function badge(config, extraClass = "") {
 function render() {
   appRoot.innerHTML = `
     <div class="pro-app">
-      ${renderTopBar()}
+        ${renderTopBar()}
       <div class="app-shell">
         ${renderSidebar()}
         <main class="workspace">
-          ${state.page === "catalog" ? renderCatalogPage() : state.page === "release" ? renderReleasePage() : renderDetailPage()}
+          ${state.page === "catalog" ? renderCatalogPage() : renderDetailPage()}
         </main>
       </div>
     </div>
@@ -538,7 +567,6 @@ function renderTopBar() {
 
 function renderSidebar() {
   const publishedCount = state.textbooks.filter((item) => item.status === "PUBLISHED").length;
-  const pendingReleaseCount = state.releaseRequests.filter((item) => ["CHECKING", "READY_TO_ONLINE"].includes(item.status)).length;
   return `
     <aside class="sidebar">
       <div class="brand">
@@ -550,22 +578,18 @@ function renderSidebar() {
       </div>
       <nav class="nav">
         <div class="nav-section">业务功能</div>
-        <button class="nav-item ${state.page !== "release" ? "active" : ""}" type="button" data-action="go-catalog">
+        <button class="nav-item active" type="button" data-action="go-catalog">
           <i data-lucide="library-big"></i><span>背单词词书管理</span>
-        </button>
-        <button class="nav-item ${state.page === "release" ? "active" : ""}" type="button" data-action="go-release">
-          <i data-lucide="rocket"></i><span>背单词词书上线</span>
-          ${pendingReleaseCount ? `<strong class="nav-count">${pendingReleaseCount}</strong>` : ""}
         </button>
       </nav>
       <div class="sidebar-foot">
         <div class="mini-metric">
-          <span>已上线词书</span>
+          <span>已发布词书</span>
           <strong>${publishedCount}</strong>
         </div>
         <div class="mini-metric">
-          <span>待上线处理</span>
-          <strong>${pendingReleaseCount}</strong>
+          <span>发布入口</span>
+          <strong>详情页</strong>
         </div>
       </div>
     </aside>
@@ -575,190 +599,95 @@ function renderSidebar() {
 function renderCatalogPage() {
   const selectedCategory = getCategory();
   const books = sortedBySort(state.textbooks.filter((bookItem) => bookItem.categoryId === state.selectedCategoryId));
-  const totalWords = state.textbooks.reduce((sum, item) => sum + Number(item.displayWordCount || 0), 0);
   return `
-    <header class="page-header">
-      <div>
-        <div class="page-kicker"><i data-lucide="layout-dashboard"></i>词书生产后台</div>
-        <h1>词书管理</h1>
-        <p class="page-desc">左侧维护词书分类，右侧维护当前分类下的词书。点击词书行进入版本和词清单维护页面。</p>
-      </div>
-      <div class="stats-strip">
-        <div class="stat-card"><span>词书分类</span><strong>${state.categories.length}</strong></div>
-        <div class="stat-card"><span>词书总数</span><strong>${state.textbooks.length}</strong></div>
-        <div class="stat-card"><span>展示词数</span><strong>${totalWords.toLocaleString()}</strong></div>
-      </div>
-    </header>
+    <div class="catalog-page">
+      <header class="page-header catalog-header">
+        <div>
+          <div class="page-kicker"><i data-lucide="layout-dashboard"></i>词书生产后台</div>
+          <h1>词书管理</h1>
+        </div>
+      </header>
 
-    <div class="catalog-layout">
-      <section class="panel">
-        <div class="panel-header">
-          <div class="panel-title">
-            <i data-lucide="folder-tree"></i>
-            <div>
-              <h2>词书分类</h2>
-              <small>支持新增、修改、删除</small>
+      <div class="catalog-layout">
+        <section class="panel catalog-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <i data-lucide="folder-tree"></i>
+              <div>
+                <h2>词书分类</h2>
+                <small>支持新增、修改、删除</small>
+              </div>
+            </div>
+            <button class="btn primary" type="button" data-action="open-category-form"><i data-lucide="plus"></i>新增</button>
+          </div>
+          <div class="category-list">
+            ${sortedBySort(state.categories).map(renderCategoryRow).join("")}
+          </div>
+        </section>
+
+        <section class="panel catalog-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <i data-lucide="book-copy"></i>
+              <div>
+                <h2>${escapeHtml(selectedCategory?.name || "未选择分类")} / 词书列表</h2>
+                <small>新增词书后自动创建首个草稿版本 V1</small>
+              </div>
+            </div>
+            <div class="toolbar">
+              <button class="btn primary" type="button" data-action="open-book-form"><i data-lucide="plus"></i>新建词书</button>
             </div>
           </div>
-          <button class="btn primary" type="button" data-action="open-category-form"><i data-lucide="plus"></i>新增</button>
-        </div>
-        <div class="category-list">
-          ${sortedBySort(state.categories).map(renderCategoryRow).join("")}
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div class="panel-title">
-            <i data-lucide="book-copy"></i>
-            <div>
-              <h2>${escapeHtml(selectedCategory?.name || "未选择分类")} / 词书列表</h2>
-              <small>新增词书后自动创建首个草稿版本 V1</small>
-            </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>词书</th>
+                  <th>出版社</th>
+                  <th>学段</th>
+                  <th>册别</th>
+                  <th>创建人</th>
+                  <th>单词数量</th>
+                  <th>状态</th>
+                  <th style="width: 160px;">操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${books.length ? books.map(renderBookRow).join("") : renderEmptyTableRow("当前分类下暂无词书")}
+              </tbody>
+            </table>
           </div>
-          <div class="toolbar">
-            <button class="btn primary" type="button" data-action="open-book-form"><i data-lucide="plus"></i>新建词书</button>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>词书</th>
-                <th>出版社</th>
-                <th>学段</th>
-                <th>册别</th>
-                <th>创建人</th>
-                <th>单词数量</th>
-                <th>状态</th>
-                <th style="width: 160px;">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${books.length ? books.map(renderBookRow).join("") : renderEmptyTableRow("当前分类下暂无词书")}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   `;
-}
-
-function renderReleasePage() {
-  const requests = getFilteredReleaseRequests();
-  return `
-    <header class="page-header">
-      <div>
-        <div class="page-kicker"><i data-lucide="rocket"></i>上线门禁</div>
-        <h1>背单词词书上线</h1>
-        <p class="page-desc">仅展示待上线的词书修改。词书详情页点击发布后进入本页面，程序校验通过后人工点击上线才对线上生效。</p>
-      </div>
-    </header>
-
-    <section class="panel release-panel">
-      <div class="panel-header">
-        <div class="panel-title">
-          <i data-lucide="shield-check"></i>
-          <div>
-            <h2>待上线词书修改</h2>
-            <small>仅展示程序校验中和可上线的提交记录</small>
-          </div>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table class="data-table release-table">
-          <thead>
-            <tr>
-              <th>词书</th>
-              <th>提交版本</th>
-              <th>当前线上</th>
-              <th>提交人</th>
-              <th>提交时间</th>
-              <th>状态</th>
-              <th>原因 / 备注</th>
-              <th style="width: 280px;">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${requests.length ? requests.map(renderReleaseRow).join("") : renderReleaseEmptyRow()}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  `;
-}
-
-function renderReleaseFilterButton(status, label) {
-  const active = (state.selectedReleaseStatus || "all") === status ? "active" : "";
-  return `<button class="filter-pill ${active}" type="button" data-action="filter-release" data-status="${status}">${label}</button>`;
-}
-
-function getFilteredReleaseRequests() {
-  const rows = [...state.releaseRequests].sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
-  return rows.filter((item) => ["CHECKING", "READY_TO_ONLINE"].includes(item.status));
-}
-
-function renderReleaseRow(request) {
-  const bookItem = getBook(request.textbookId);
-  const version = getVersion(request.versionId);
-  const online = request.onlineVersionId ? getVersion(request.onlineVersionId) : bookItem?.onlineVersionId ? getVersion(bookItem.onlineVersionId) : null;
-  return `
-    <tr>
-      <td>
-        <div class="book-cell">
-          <div class="book-cover cover-${bookItem?.cover || "blue"}">词书</div>
-          <div>
-            <div class="book-name">${escapeHtml(bookItem?.name || "未知词书")}</div>
-            <div class="book-extra">${escapeHtml(bookItem?.publisher || "")} · ${escapeHtml(bookItem?.volume || "")}</div>
-          </div>
-        </div>
-      </td>
-      <td>
-        <strong>V${version?.no || "-"}</strong>
-        <div class="book-extra">${escapeHtml(version?.changeSummary || request.releaseNote || "")}</div>
-      </td>
-      <td>${online ? `V${online.no}` : "暂无线上版本"}</td>
-      <td>${escapeHtml(request.submitter)}</td>
-      <td>${escapeHtml(request.submittedAt)}</td>
-      <td>${badge(releaseStatus[request.status] || { label: request.status, tone: "gray" })}</td>
-      <td>
-        <div class="release-reason">${escapeHtml(request.reason || request.releaseNote || "无")}</div>
-      </td>
-      <td>
-        <div class="release-actions">
-          ${["CHECKING", "READY_TO_ONLINE"].includes(request.status) ? `<button class="btn primary" type="button" data-action="open-release-online" data-request-id="${request.id}"><i data-lucide="rocket"></i>上线</button>` : ""}
-          ${["CHECKING", "READY_TO_ONLINE"].includes(request.status) ? `<button class="btn" type="button" data-action="open-release-reject" data-request-id="${request.id}"><i data-lucide="undo-2"></i>驳回</button>` : ""}
-          <button class="icon-btn" type="button" data-action="open-release-book" data-book-id="${request.textbookId}" data-version-id="${request.versionId}" title="查看词书详情"><i data-lucide="square-arrow-out-up-right"></i></button>
-        </div>
-      </td>
-    </tr>
-  `;
-}
-
-function renderReleaseEmptyRow() {
-  return `<tr><td colspan="8"><div class="empty-state" style="min-height: 220px;"><div><div class="empty-icon"><i data-lucide="inbox"></i></div><h3>暂无待上线词书修改</h3><p>在词书详情页选择待提交上线版本，点击发布后会出现在这里。</p></div></div></td></tr>`;
 }
 
 function renderCategoryRow(category) {
   const active = category.id === state.selectedCategoryId ? "active" : "";
   const bookTotal = countBooks(category.id);
   const onlineTotal = countPublishedBooks(category.id);
+  const locked = onlineTotal > 0;
   return `
     <div class="category-row ${active}" data-action="select-category" data-category-id="${category.id}">
       <div class="category-main">
         <div class="category-name" title="${escapeHtml(category.name)}">${escapeHtml(category.name)}</div>
-        ${badge(categoryStatus[category.status])}
+        ${badge(getCategoryStatusConfig(category.id))}
       </div>
       <div class="category-meta">
         <span>${bookTotal} 本词书</span>
-        <span>${onlineTotal} 本已上线</span>
+        <span>${onlineTotal} 本已发布</span>
       </div>
       <div class="category-footer">
         <span class="category-sort">排序 ${category.sort}</span>
-        <div class="category-actions">
-          <button class="category-action" type="button" data-action="edit-category" data-category-id="${category.id}" title="修改分类"><i data-lucide="pencil"></i></button>
-          <button class="category-action danger" type="button" data-action="confirm-delete-category" data-category-id="${category.id}" title="删除分类"><i data-lucide="trash-2"></i></button>
-        </div>
+        ${
+          locked
+            ? `<span class="category-lock">已发布不可改</span>`
+            : `<div class="category-actions">
+                <button class="category-action" type="button" data-action="edit-category" data-category-id="${category.id}" title="修改分类"><i data-lucide="pencil"></i></button>
+                <button class="category-action danger" type="button" data-action="confirm-delete-category" data-category-id="${category.id}" title="删除分类"><i data-lucide="trash-2"></i></button>
+              </div>`
+        }
       </div>
     </div>
   `;
@@ -766,6 +695,7 @@ function renderCategoryRow(category) {
 
 function renderBookRow(bookItem) {
   const onlineVersion = state.versions.find((item) => item.id === bookItem.onlineVersionId);
+  const deletable = !hasPublishedVersion(bookItem.id);
   return `
     <tr data-action="open-book" data-book-id="${bookItem.id}">
       <td>
@@ -790,7 +720,7 @@ function renderBookRow(bookItem) {
         <div class="row-actions">
           <button class="icon-btn" type="button" data-action="open-book" data-book-id="${bookItem.id}" title="进入详情"><i data-lucide="square-arrow-out-up-right"></i></button>
           <button class="icon-btn" type="button" data-action="edit-book" data-book-id="${bookItem.id}" title="修改词书"><i data-lucide="pencil"></i></button>
-          <button class="icon-btn danger" type="button" data-action="confirm-delete-book" data-book-id="${bookItem.id}" title="删除词书"><i data-lucide="trash-2"></i></button>
+          ${deletable ? `<button class="icon-btn danger" type="button" data-action="confirm-delete-book" data-book-id="${bookItem.id}" title="删除词书"><i data-lucide="trash-2"></i></button>` : ""}
         </div>
       </td>
     </tr>
@@ -823,7 +753,7 @@ function renderDetailPage() {
           <strong>${escapeHtml(bookItem.name)}</strong>
         </div>
         <h1>词书详情与版本维护</h1>
-        <p class="page-desc">维护单个词书的版本、单词清单和分组内容。已上线版本只读，词条增删与排序必须先创建新版本。</p>
+        <p class="page-desc">维护单个词书的版本、单词清单和分组内容。已发布版本受版本规则保护，词条增删与排序必须先创建新版本。</p>
       </div>
       <div class="header-actions">
         <button class="btn" type="button" data-action="go-catalog"><i data-lucide="arrow-left"></i>返回词书管理</button>
@@ -844,21 +774,58 @@ function renderVersionPill(version, bookItem) {
   return `
     <button class="version-pill ${active}" type="button" data-action="switch-version" data-version-id="${version.id}">
       <strong>V${version.no}</strong>
-      ${isOnline ? `<span class="online-dot" title="当前线上版本"></span>` : ""}
+      ${isOnline ? `<span class="online-dot" title="当前已发布版本"></span>` : ""}
       ${!isPublished ? `<span class="draft-dot" title="${escapeHtml(versionStatus[version.status].label)}"></span>` : ""}
     </button>
   `;
+}
+
+function getVersionActionState(version) {
+  const status = version?.status || "DRAFT";
+  const canRerunRecognition = ["LIST_GENERATING", "LIST_CONFIRMING"].includes(status) && !version?.baseVersionId;
+  const hasPendingContentChanges = Boolean(version?.hasPendingContentChanges);
+  return {
+    recognition: {
+      label: status === "LIST_CONFIRMING" && !version?.baseVersionId ? "重新识别" : "识别完成",
+      enabled: canRerunRecognition,
+    },
+    confirmWordlist: {
+      enabled: status === "LIST_CONFIRMING",
+    },
+    publish: {
+      label: status === "PUBLISH_FAILED" ? "重新发布" : "发布",
+      visible: status !== "PUBLISH_CHECKING",
+      enabled: ["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(status) || (status === "PUBLISHED" && hasPendingContentChanges),
+    },
+    deleteVersion: {
+      enabled: !["PUBLISHED", "PUBLISH_CHECKING"].includes(status),
+    },
+  };
+}
+
+function getPublishProgressText(version) {
+  if (version.status === "PUBLISHED" && version.hasPendingContentChanges) return "有待发布内容修改";
+  if (version.status === "PUBLISHED") return "已发布";
+  if (version.status === "PUBLISH_CHECKING") return "后台执行中";
+  if (version.status === "PUBLISH_FAILED") return "失败后可重新发布";
+  if (version.status === "READY_TO_PUBLISH") return "可提交发布";
+  return "未进入发布";
+}
+
+function getPublishTimingText(version, bookItem = getBook(version?.textbookId)) {
+  if (!version || !bookItem) return "-";
+  if (bookItem.onlineVersionId === version.id && version.hasPendingContentChanges) return "内容修改校验后立即上线";
+  if (bookItem.onlineVersionId === version.id) return "当前线上版本";
+  if (version.status === "PUBLISH_CHECKING") return "发布后后台自动执行";
+  return "新版本由后台按上线窗口生效";
 }
 
 function renderVersionConsole(bookItem, versions, version) {
   const base = version.baseVersionId ? getVersion(version.baseVersionId) : null;
   const words = state.words[version.id] || [];
   const groups = state.groups[version.id] || [];
-  const activeRequest = getActiveReleaseRequest(version.id);
   const failureReason = getReleaseFailureReason(version);
-  const canPublish = ["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(version.status) && !activeRequest;
-  const publishButtonText = version.status === "PUBLISH_FAILED" ? "重新发布" : "发布";
-  const canDelete = version.status !== "PUBLISHED" && !activeRequest;
+  const actionState = getVersionActionState(version);
   return `
     <section class="version-console">
       <div class="version-console-head">
@@ -877,24 +844,36 @@ function renderVersionConsole(bookItem, versions, version) {
           <div class="version-fact"><span>基础版本</span><strong>${base ? `V${base.no}` : "无"}</strong></div>
           <div class="version-fact"><span>状态</span>${badge(versionStatus[version.status])}</div>
           <div class="version-fact"><span>数据量</span><strong>${words.length} 词 / ${groups.length} 组</strong></div>
-          <div class="version-fact"><span>上线流程</span><strong>${activeRequest ? releaseStatus[activeRequest.status].label : version.status === "PUBLISHED" ? "已线上生效" : "未提交"}</strong></div>
+          <div class="version-fact"><span>发布进度</span><strong>${getPublishProgressText(version)}</strong></div>
+          <div class="version-fact"><span>上线方式</span><strong>${escapeHtml(getPublishTimingText(version, bookItem))}</strong></div>
         </div>
+        ${
+          version.status === "PUBLISHED" && version.hasPendingContentChanges
+            ? `<div class="pending-change-banner">
+                <i data-lucide="file-warning"></i>
+                <div>
+                  <strong>当前线上版本存在未发布内容修改</strong>
+                  <span>已发布版本允许修改单词、故事、图片、音频等内容；增删词条和排序仍需创建新版本。</span>
+                </div>
+              </div>`
+            : ""
+        }
         ${
           version.status === "PUBLISH_FAILED"
             ? `<div class="failure-banner">
                 <i data-lucide="circle-alert"></i>
                 <div>
                   <strong>发布失败</strong>
-                  <span>${escapeHtml(failureReason || "上线流程被驳回或程序校验失败，请修改数据后重新发布。")}</span>
+                  <span>${escapeHtml(failureReason || "后台校验失败，请修改数据后重新发布。")}</span>
                 </div>
               </div>`
             : ""
         }
         <div class="version-actions">
-          <button class="btn" type="button" data-action="complete-recognition" ${version.status === "LIST_GENERATING" ? "" : "disabled"}><i data-lucide="scan-text"></i>识别完成</button>
-          <button class="btn" type="button" data-action="confirm-wordlist" ${version.status === "LIST_CONFIRMING" ? "" : "disabled"}><i data-lucide="list-checks"></i>确认词清单</button>
-          <button class="btn primary" type="button" data-action="open-publish" ${canPublish ? "" : "disabled"}><i data-lucide="send"></i>${publishButtonText}</button>
-          <button class="btn danger" type="button" data-action="confirm-delete-version" ${canDelete ? "" : "disabled"}><i data-lucide="trash-2"></i>删除</button>
+          <button class="btn" type="button" data-action="complete-recognition" ${actionState.recognition.enabled ? "" : "disabled"}><i data-lucide="scan-text"></i>${actionState.recognition.label}</button>
+          <button class="btn" type="button" data-action="confirm-wordlist" ${actionState.confirmWordlist.enabled ? "" : "disabled"}><i data-lucide="list-checks"></i>确认词清单</button>
+          ${actionState.publish.visible ? `<button class="btn primary" type="button" data-action="open-publish" ${actionState.publish.enabled ? "" : "disabled"}><i data-lucide="send"></i>${actionState.publish.label}</button>` : ""}
+          <button class="btn danger" type="button" data-action="confirm-delete-version" ${actionState.deleteVersion.enabled ? "" : "disabled"}><i data-lucide="trash-2"></i>删除</button>
         </div>
       </div>
     </section>
@@ -938,11 +917,17 @@ function renderVersionContent(version) {
 }
 
 function renderWordActions(version) {
-  return "";
+  if (isPublishingLocked(version)) {
+    return `<span class="subtle">后台执行中，暂不可编辑</span>`;
+  }
+  if (version.status === "PUBLISHED") {
+    return `<span class="subtle">已发布版本仅支持内容编辑</span>`;
+  }
+  return `<button class="btn primary" type="button" data-action="open-word-form"><i data-lucide="list-plus"></i>插入单词</button>`;
 }
 
 function renderGroupActions(version) {
-  if (version.status === "PUBLISHED") return "";
+  if (version.status === "PUBLISHED" || isPublishingLocked(version)) return "";
   const hasGroups = getSelectedGroups().length > 0;
   return `
     <button class="btn" type="button" data-action="regenerate-groups" ${hasGroups ? "" : "disabled"}><i data-lucide="refresh-cw"></i>重新生成分组数据</button>
@@ -954,14 +939,13 @@ function renderWordList(version) {
   if (!words.length) {
     return renderEmptyWords(version);
   }
-  const readonly = version.status === "PUBLISHED";
   const filteredWords = getFilteredWords(words);
   const units = [...new Set(filteredWords.map((item) => item.unit))];
   return `
     ${renderWordFilters(words, filteredWords)}
     ${
       filteredWords.length
-        ? units.map((unit) => renderUnitWords(unit, filteredWords.filter((item) => item.unit === unit), readonly)).join("")
+        ? units.map((unit) => renderUnitWords(unit, filteredWords.filter((item) => item.unit === unit), version)).join("")
         : renderNoMatchedWords()
     }
   `;
@@ -1029,7 +1013,9 @@ function renderEmptyWords(version) {
   `;
 }
 
-function renderUnitWords(unit, words, readonly) {
+function renderUnitWords(unit, words, version) {
+  const structuralEditable = !["PUBLISHED", "PUBLISH_CHECKING"].includes(version.status);
+  const actionWidth = structuralEditable ? "290px" : version.status === "PUBLISHED" ? "138px" : "90px";
   return `
     <section class="word-unit">
       <div class="unit-head">
@@ -1037,7 +1023,7 @@ function renderUnitWords(unit, words, readonly) {
           <strong>${escapeHtml(unit)}</strong>
           <span class="muted"> · ${words.length} 个单词</span>
         </div>
-        ${readonly ? "" : `<span class="subtle">同单元内支持上移 / 下移</span>`}
+        ${structuralEditable ? `<span class="subtle">同单元内支持上移 / 下移</span>` : `<span class="subtle">已发布或发布中版本不支持增删排序</span>`}
       </div>
       <table class="word-table">
         <thead>
@@ -1045,30 +1031,37 @@ function renderUnitWords(unit, words, readonly) {
             <th style="width: 26%;">单词</th>
             <th>释义</th>
             <th style="width: 18%;">状态</th>
-            <th style="width: ${readonly ? "90px" : "290px"};">操作</th>
+            <th style="width: ${actionWidth};">操作</th>
           </tr>
         </thead>
         <tbody>
-          ${words.map((item) => renderWordRow(item, readonly)).join("")}
+          ${words.map((item) => renderWordRow(item, version)).join("")}
         </tbody>
       </table>
     </section>
   `;
 }
 
-function renderWordRow(item, readonly) {
+function renderWordRow(item, version) {
+  const structuralEditable = !["PUBLISHED", "PUBLISH_CHECKING"].includes(version.status);
+  const contentEditable = !isPublishingLocked(version);
   const detailButton = item.detailGenerated
     ? `<button class="icon-btn" type="button" data-action="view-word-detail" data-word-id="${item.id}" title="查看详情"><i data-lucide="panel-right-open"></i></button>`
     : "";
-  const editableActions = readonly
-    ? ""
-    : `
+  const editOnlyButton =
+    version.status === "PUBLISHED" && contentEditable
+      ? `<button class="icon-btn" type="button" data-action="edit-word" data-word-id="${item.id}" title="编辑单词内容"><i data-lucide="pencil"></i></button>`
+      : "";
+  const editableActions = structuralEditable
+    ? `
         <button class="icon-btn accent" type="button" data-action="insert-word-after" data-word-id="${item.id}" title="在下方插入单词"><i data-lucide="list-plus"></i></button>
         <button class="icon-btn" type="button" data-action="move-word" data-direction="up" data-word-id="${item.id}" title="上移"><i data-lucide="arrow-up"></i></button>
         <button class="icon-btn" type="button" data-action="move-word" data-direction="down" data-word-id="${item.id}" title="下移"><i data-lucide="arrow-down"></i></button>
         <button class="icon-btn" type="button" data-action="edit-word" data-word-id="${item.id}" title="编辑"><i data-lucide="pencil"></i></button>
         <button class="icon-btn danger" type="button" data-action="confirm-delete-word" data-word-id="${item.id}" title="删除"><i data-lucide="trash-2"></i></button>
-      `;
+      `
+    : "";
+  const hasActions = detailButton || editOnlyButton || editableActions;
   return `
     <tr>
       <td>
@@ -1076,12 +1069,13 @@ function renderWordRow(item, readonly) {
         <div class="word-pron">ID：${escapeHtml(item.id)} · ${escapeHtml(item.phonetic)}</div>
       </td>
       <td>${escapeHtml(item.meaning)}</td>
-      <td>${badge({ label: getVersion()?.status === "PUBLISHED" ? "已发布" : "未发布", tone: getVersion()?.status === "PUBLISHED" ? "green" : "amber" })}</td>
+      <td>${badge(getItemPublishBadge(item, version))}</td>
       <td>
         <div class="row-actions">
           ${detailButton}
+          ${editOnlyButton}
           ${editableActions}
-          ${readonly && !detailButton ? `<span class="muted">-</span>` : ""}
+          ${hasActions ? "" : `<span class="muted">-</span>`}
         </div>
       </td>
     </tr>
@@ -1168,6 +1162,7 @@ function renderNoMatchedGroups() {
 
 function renderGroupRow(item, version) {
   const published = version.status === "PUBLISHED";
+  const locked = isPublishingLocked(version);
   return `
     <tr>
       <td>
@@ -1186,11 +1181,11 @@ function renderGroupRow(item, version) {
           <span>故事：${escapeHtml(item.storyStatus)}</span>
         </div>
       </td>
-      <td>${badge({ label: published ? "已发布" : "未发布", tone: published ? "green" : "amber" })}</td>
+      <td>${badge(getItemPublishBadge(item, version))}</td>
       <td>
         <div class="row-actions">
           <button class="icon-btn" type="button" data-action="view-group" data-group-id="${item.id}" title="查看详情"><i data-lucide="panel-right-open"></i></button>
-          <button class="icon-btn" type="button" data-action="regenerate-one-group" data-group-id="${item.id}" title="重新生成"><i data-lucide="refresh-cw"></i></button>
+          ${published || locked ? "" : `<button class="icon-btn" type="button" data-action="regenerate-one-group" data-group-id="${item.id}" title="重新生成"><i data-lucide="refresh-cw"></i></button>`}
         </div>
       </td>
     </tr>
@@ -1205,7 +1200,7 @@ function renderModal() {
   if (type === "word-form") return renderWordModal();
   if (type === "confirm") return renderConfirmModal();
   if (type === "publish") return renderPublishModal();
-  if (type === "release-reject") return renderReleaseRejectModal();
+  if (type === "create-version-tip") return renderCreateVersionTipModal();
   if (type === "create-version") return renderCreateVersionModal();
   if (type === "word-detail") return renderWordDetailModal();
   if (type === "word-compare") return renderWordCompareModal();
@@ -1213,6 +1208,18 @@ function renderModal() {
   if (type === "group-compare") return renderGroupCompareModal();
   if (type === "readonly-guard") return renderReadonlyGuardModal();
   return "";
+}
+
+function renderCreateVersionTipModal() {
+  return modalShell({
+    size: "sm",
+    title: "新建词书版本",
+    body: `<p style="line-height: 1.7;">有单词增、删、排序操作才可创建新版本！如果只是修改已发布单词或故事内容，可在当前线上版本中编辑后重新发布。</p>`,
+    foot: `
+      <button class="btn" type="button" data-action="close-modal">取消</button>
+      <button class="btn primary" type="button" data-action="open-create-version-form"><i data-lucide="git-branch-plus"></i>创建</button>
+    `,
+  });
 }
 
 function renderCategoryModal() {
@@ -1303,6 +1310,7 @@ function renderWordModal() {
   const wordItem = findWord(state.modal.wordId);
   const insertTarget = state.modal.insertAfterWordId ? findWord(state.modal.insertAfterWordId) : null;
   const title = wordItem ? "修改单词" : insertTarget ? `在 ${insertTarget.text} 后插入单词` : "新增单词";
+  const lockedUnit = Boolean(wordItem && getVersion()?.status === "PUBLISHED");
   return modalShell({
     title,
     body: `
@@ -1315,7 +1323,8 @@ function renderWordModal() {
         </div>
         <div class="form-row">
           <label>所属单元</label>
-          <input name="unit" value="${escapeHtml(wordItem?.unit || insertTarget?.unit || "Unit 1")}" placeholder="如：Unit 1" required />
+          <input name="unit" value="${escapeHtml(wordItem?.unit || insertTarget?.unit || "Unit 1")}" placeholder="如：Unit 1" ${lockedUnit ? "disabled" : "required"} />
+          ${lockedUnit ? `<input type="hidden" name="unit" value="${escapeHtml(wordItem.unit)}" />` : ""}
         </div>
         <div class="form-row">
           <label>音标</label>
@@ -1329,6 +1338,13 @@ function renderWordModal() {
           insertTarget
             ? `<div class="form-row full">
                 <div class="form-hint"><i data-lucide="info"></i>保存后，新单词会插入到「${escapeHtml(insertTarget.text)}」的下方，并保留同单元排序。</div>
+              </div>`
+            : ""
+        }
+        ${
+          lockedUnit
+            ? `<div class="form-row full">
+                <div class="form-hint"><i data-lucide="info"></i>已发布版本只允许修改单词内容，不允许修改所属单元、增删词条或调整排序。</div>
               </div>`
             : ""
         }
@@ -1357,65 +1373,31 @@ function renderPublishModal() {
   const bookItem = getBook();
   const version = getVersion();
   const online = bookItem.onlineVersionId ? getVersion(bookItem.onlineVersionId) : null;
-  const activeRequest = getActiveReleaseRequest(version?.id);
+  const contentUpdate = bookItem.onlineVersionId === version.id && version.hasPendingContentChanges;
   return modalShell({
-    title: version?.status === "PUBLISH_FAILED" ? "重新提交上线" : "提交上线申请",
+    title: version?.status === "PUBLISH_FAILED" ? "重新发布" : contentUpdate ? "发布内容修改" : "发布词书版本",
     body: `
       <form id="publish-form" class="form-grid">
         <div class="form-row">
-          <label>待上线版本</label>
+          <label>发布版本</label>
           <input value="${escapeHtml(bookItem.name)} V${version.no}" disabled />
         </div>
         <div class="form-row">
-          <label>当前线上版本</label>
-          <input value="${online ? `V${online.no}` : "暂无线上版本"}" disabled />
+          <label>当前已发布版本</label>
+          <input value="${online ? `V${online.no}` : "暂无已发布版本"}" disabled />
         </div>
-        ${
-          activeRequest
-            ? `<div class="form-row full">
-                <div class="form-hint"><i data-lucide="info"></i>该版本已在上线流程中，状态为「${escapeHtml(releaseStatus[activeRequest.status].label)}」，无需重复提交。</div>
-              </div>`
-            : ""
-        }
         <div class="form-row full">
-          <label>本次上线内容描述</label>
-          <textarea name="releaseNote" placeholder="请说明本次版本调整内容。提交后先进入背单词词书上线页，不会立即线上生效。" required>${escapeHtml(version.releaseNote || version.changeSummary || "")}</textarea>
+          <label>本次发布内容描述</label>
+          <textarea name="releaseNote" placeholder="请说明本次调整内容。提交后后台自动执行校验与上线流程。" required>${escapeHtml(version.releaseNote || version.changeSummary || "")}</textarea>
+        </div>
+        <div class="form-row full">
+          <div class="form-hint"><i data-lucide="info"></i>${contentUpdate ? "本次为已发布内容修改，后台校验通过后立即生效。" : "本次为新词书版本发布，后台校验通过后按上线窗口生效。"}提交后无需人工处理。</div>
         </div>
       </form>
     `,
     foot: `
       <button class="btn" type="button" data-action="close-modal">取消</button>
-      <button class="btn primary" type="submit" form="publish-form" ${activeRequest ? "disabled" : ""}>提交上线流程</button>
-    `,
-  });
-}
-
-function renderReleaseRejectModal() {
-  const request = state.releaseRequests.find((item) => item.id === state.modal.requestId);
-  const bookItem = request ? getBook(request.textbookId) : null;
-  const version = request ? getVersion(request.versionId) : null;
-  return modalShell({
-    title: "驳回上线",
-    body: `
-      <form id="release-reject-form" class="form-grid">
-        <input type="hidden" name="requestId" value="${escapeHtml(request?.id || "")}" />
-        <div class="form-row">
-          <label>词书</label>
-          <input value="${escapeHtml(bookItem?.name || "")}" disabled />
-        </div>
-        <div class="form-row">
-          <label>版本</label>
-          <input value="${version ? `V${version.no}` : ""}" disabled />
-        </div>
-        <div class="form-row full">
-          <label>驳回原因</label>
-          <textarea name="reason" placeholder="请填写驳回原因，原因会回写到词书详情页的发布失败状态中。" required></textarea>
-        </div>
-      </form>
-    `,
-    foot: `
-      <button class="btn" type="button" data-action="close-modal">取消</button>
-      <button class="btn danger" type="submit" form="release-reject-form">确认驳回</button>
+      <button class="btn primary" type="submit" form="publish-form">提交发布</button>
     `,
   });
 }
@@ -1460,7 +1442,7 @@ function renderCreateVersionModal() {
                   ? selectableVersions
                       .map((item) => {
                         const words = state.words[item.id] || [];
-                        const label = item.id === bookItem.onlineVersionId ? "当前线上版本" : versionStatus[item.status].label;
+                        const label = item.id === bookItem.onlineVersionId ? "当前已发布版本" : versionStatus[item.status].label;
                         return `<option value="${item.id}" ${item.id === selectedBaseId ? "selected" : ""}>V${item.no} · ${label} · ${words.length} 词</option>`;
                       })
                       .join("")
@@ -1502,7 +1484,8 @@ function renderWordDetailModal() {
   const wordItem = findWord(state.modal.wordId);
   if (!wordItem) return "";
   const data = getWordGeneratedData(wordItem);
-  const published = getVersion()?.status === "PUBLISHED";
+  const version = getVersion();
+  const locked = isPublishingLocked(version);
   const compareContext = getCompareContext();
   return modalShell({
     size: "xl",
@@ -1513,7 +1496,7 @@ function renderWordDetailModal() {
           <div>
             <div class="word-detail-title">
               <h3>${escapeHtml(data.wordText)}</h3>
-              ${badge({ label: published ? "已发布" : "未发布", tone: published ? "green" : "amber" })}
+              ${badge(getItemPublishBadge(wordItem, version))}
             </div>
             <div class="word-detail-meta">
               <span>${escapeHtml(data.unitName)}</span>
@@ -1524,7 +1507,7 @@ function renderWordDetailModal() {
           </div>
           <div class="detail-action-row">
             ${compareContext ? `<button class="btn" type="button" data-action="view-word-compare" data-word-id="${wordItem.id}"><i data-lucide="git-compare"></i>对比</button>` : ""}
-            <button class="btn primary" type="button" data-action="edit-word" data-word-id="${wordItem.id}"><i data-lucide="pencil"></i>编辑单词</button>
+            ${locked ? "" : `<button class="btn primary" type="button" data-action="edit-word" data-word-id="${wordItem.id}"><i data-lucide="pencil"></i>编辑单词</button>`}
           </div>
         </div>
 
@@ -1674,7 +1657,8 @@ function renderDistractorSection(wordItem, data) {
 function renderGroupDetailModal() {
   const item = getSelectedGroups().find((groupItem) => groupItem.id === state.modal.groupId);
   if (!item) return "";
-  const published = getVersion()?.status === "PUBLISHED";
+  const version = getVersion();
+  const locked = isPublishingLocked(version);
   const data = getGroupGeneratedData(item);
   const compareContext = getCompareContext();
   return modalShell({
@@ -1686,7 +1670,7 @@ function renderGroupDetailModal() {
           <div>
             <div class="group-title">
               <h3>${escapeHtml(item.title)}</h3>
-              ${badge({ label: published ? "已发布" : "未发布", tone: published ? "green" : "amber" })}
+              ${badge(getItemPublishBadge(item, version))}
             </div>
             <div class="word-detail-meta">
               <span>${escapeHtml(data.unitName)}</span>
@@ -1698,7 +1682,7 @@ function renderGroupDetailModal() {
           </div>
           <div class="detail-action-row">
             ${compareContext ? `<button class="btn" type="button" data-action="view-group-compare" data-group-id="${item.id}"><i data-lucide="git-compare"></i>对比</button>` : ""}
-            <button class="btn primary" type="button" data-action="edit-group-story" data-group-id="${item.id}"><i data-lucide="pencil"></i>编辑故事</button>
+            ${locked ? "" : `<button class="btn primary" type="button" data-action="edit-group-story" data-group-id="${item.id}"><i data-lucide="pencil"></i>编辑故事</button>`}
           </div>
         </div>
 
@@ -1915,16 +1899,16 @@ function renderCompareMissingPanel(title, version, message) {
 
 function renderReadonlyGuardModal() {
   const version = getVersion();
-  const isOnlineFlow = ["PUBLISH_CHECKING", "READY_TO_ONLINE"].includes(version?.status);
+  const isOnlineFlow = isPublishingLocked(version);
   return modalShell({
     size: "sm",
-    title: isOnlineFlow ? "版本正在上线流程中" : "需要先创建新版本",
+    title: isOnlineFlow ? "版本正在发布中" : "需要先创建新版本",
     body: `
-      <p style="line-height: 1.7;">${isOnlineFlow ? "当前版本已提交到“背单词词书上线”页面，需先在上线页完成上线或驳回后，再回到详情页继续修改。" : "已上线版本不允许直接进行增删词条或词条排序。系统会基于当前线上版本创建一个可编辑的新版本，编辑完成后再重新生成内容并走上线流程。"}</p>
+      <p style="line-height: 1.7;">${isOnlineFlow ? "当前版本已提交发布，后台正在执行校验与上线流程，完成前暂不可修改。" : "已发布版本不允许直接进行增删词条或词条排序。系统会基于当前已发布版本创建一个可编辑的新版本，编辑完成后再重新生成内容并发布。"}</p>
     `,
     foot: `
       <button class="btn" type="button" data-action="close-modal">取消</button>
-      ${isOnlineFlow ? `<button class="btn primary" type="button" data-action="go-release"><i data-lucide="rocket"></i>去上线页</button>` : `<button class="btn primary" type="button" data-action="create-version-from-guard"><i data-lucide="git-branch-plus"></i>创建新版本</button>`}
+      ${isOnlineFlow ? "" : `<button class="btn primary" type="button" data-action="create-version-from-guard"><i data-lucide="git-branch-plus"></i>创建新版本</button>`}
     `,
   });
 }
@@ -2037,13 +2021,7 @@ function buildDefaultDistractors(text = "") {
 }
 
 function markGeneratedContentChanged(summary) {
-  const version = getVersion();
-  if (!version) return;
-  if (version.status !== "PUBLISHED") {
-    version.status = "READY_TO_PUBLISH";
-    version.publishFailureReason = "";
-    version.changeSummary = summary;
-  }
+  markVersionPendingContentChange(summary);
 }
 
 function getGroupById(groupId) {
@@ -2085,7 +2063,17 @@ function openConfirm(config) {
 
 function ensureEditableVersion() {
   const version = getVersion();
-  if (["PUBLISHED", "PUBLISH_CHECKING", "READY_TO_ONLINE"].includes(version?.status)) {
+  if (version?.status === "PUBLISHED" || isPublishingLocked(version)) {
+    state.modal = { type: "readonly-guard" };
+    render();
+    return false;
+  }
+  return true;
+}
+
+function ensureContentEditableVersion() {
+  const version = getVersion();
+  if (isPublishingLocked(version)) {
     state.modal = { type: "readonly-guard" };
     render();
     return false;
@@ -2124,9 +2112,9 @@ function getCompareContext(bookItem = getBook()) {
     return {
       leftVersion: publishedVersion,
       rightVersion: latestVersion,
-      leftTitle: "已上线版本内容",
+      leftTitle: "已发布版本内容",
       rightTitle: "最新内容",
-      reason: `存在已上线版本，按 V${publishedVersion.no} 与最新 V${latestVersion.no} 对比。`,
+      reason: `存在已发布版本，按 V${publishedVersion.no} 与最新 V${latestVersion.no} 对比。`,
     };
   }
   const previousVersion = versions.at(-2);
@@ -2136,7 +2124,7 @@ function getCompareContext(bookItem = getBook()) {
     rightVersion: latestVersion,
     leftTitle: "上一版本内容",
     rightTitle: "最新内容",
-    reason: `暂无已上线版本，按上一版本 V${previousVersion.no} 与最新 V${latestVersion.no} 对比。`,
+    reason: `暂无已发布版本，按上一版本 V${previousVersion.no} 与最新 V${latestVersion.no} 对比。`,
   };
 }
 
@@ -2165,7 +2153,7 @@ function getNewVersionBase(bookItem = getBook()) {
   const online = bookItem.onlineVersionId ? getVersion(bookItem.onlineVersionId) : null;
   return {
     base: online || versions.at(-1) || null,
-    baseLabel: online ? "当前线上版本" : "当前最新版本",
+    baseLabel: online ? "当前已发布版本" : "当前最新版本",
   };
 }
 
@@ -2217,7 +2205,7 @@ function createVersionFromForm(data = {}, form = null) {
 
 function completeRecognition() {
   const version = getVersion();
-  if (!version || version.status !== "LIST_GENERATING") return;
+  if (!version || !["LIST_GENERATING", "LIST_CONFIRMING"].includes(version.status)) return;
   state.words[version.id] = [
     word(uid("w"), "Unit 1", "journey", "/ˈdʒɜːrni/", "旅行，旅程", "OCR", "新增", false),
     word(uid("w"), "Unit 1", "realize", "/ˈriːəlaɪz/", "认识到，实现", "OCR", "新增", false),
@@ -2242,8 +2230,8 @@ function confirmWordlist() {
     });
     version.status = "READY_TO_PUBLISH";
     version.publishFailureReason = "";
-    version.changeSummary = "词清单已确认，分组数据与内容资源已生成，等待提交上线。";
-    showToast("内容已生成", "当前版本已进入待提交上线状态。");
+    version.changeSummary = "词清单已确认，分组数据与内容资源已生成，等待发布。";
+    showToast("内容已生成", "当前版本已进入内容生成完成状态。");
   }, 700);
 }
 
@@ -2309,20 +2297,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (action === "go-release") {
-    state.page = "release";
-    state.modal = null;
-    window.history.replaceState(null, "", "#release");
-    render();
-    return;
-  }
-
-  if (action === "filter-release") {
-    state.selectedReleaseStatus = actionTarget.dataset.status || "all";
-    render();
-    return;
-  }
-
   if (action === "select-category") {
     state.selectedCategoryId = actionTarget.dataset.categoryId;
     render();
@@ -2346,7 +2320,7 @@ document.addEventListener("click", (event) => {
     const category = getCategory(categoryId);
     openConfirm({
       title: "删除词书分类",
-      body: countBooks(categoryId) > 0 ? "该分类下仍有词书，不能删除。请先迁移或删除分类下词书。" : `确认删除「${category.name}」吗？`,
+      body: countBooks(categoryId) > 0 ? "当前分类下存在词书，不可删除。" : `删除后不可恢复，是否确认删除「${category.name}」这个词书分类？`,
       confirmText: countBooks(categoryId) > 0 ? "知道了" : "删除",
       danger: countBooks(categoryId) === 0,
       action: countBooks(categoryId) > 0 ? "noop" : "delete-category",
@@ -2386,18 +2360,6 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  if (action === "open-release-book") {
-    state.selectedTextbookId = actionTarget.dataset.bookId;
-    state.selectedVersionId = actionTarget.dataset.versionId;
-    state.page = "detail";
-    state.detailTab = "words";
-    resetWordFilters();
-    resetGroupFilters();
-    window.history.replaceState(null, "", `#detail/${state.selectedTextbookId}`);
-    render();
-    return;
-  }
-
   if (action === "move-book") {
     const bookItem = state.textbooks.find((item) => item.id === actionTarget.dataset.bookId);
     const scoped = state.textbooks.filter((item) => item.categoryId === bookItem.categoryId);
@@ -2412,7 +2374,7 @@ document.addEventListener("click", (event) => {
     const hasPublished = state.versions.some((item) => item.textbookId === bookItem.id && item.status === "PUBLISHED");
     openConfirm({
       title: "删除词书",
-      body: hasPublished ? "该词书存在已上线或历史上线版本，不允许物理删除。" : `确认删除「${bookItem.name}」吗？`,
+      body: hasPublished ? "该词书存在已发布或历史发布版本，不允许物理删除。" : `确认删除「${bookItem.name}」吗？`,
       confirmText: hasPublished ? "知道了" : "删除",
       danger: !hasPublished,
       action: hasPublished ? "noop" : "delete-book",
@@ -2448,12 +2410,18 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "create-version") {
-    state.modal = { type: "create-version" };
+    state.modal = { type: "create-version-tip" };
     render();
     return;
   }
 
   if (action === "create-version-from-guard") {
+    state.modal = { type: "create-version-tip" };
+    render();
+    return;
+  }
+
+  if (action === "open-create-version-form") {
     state.modal = { type: "create-version" };
     render();
     return;
@@ -2503,7 +2471,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "edit-word") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     state.modal = { type: "word-form", wordId: actionTarget.dataset.wordId };
     render();
     return;
@@ -2544,14 +2512,14 @@ document.addEventListener("click", (event) => {
       generateGroups(version.id);
       version.status = "READY_TO_PUBLISH";
       version.publishFailureReason = "";
-      version.changeSummary = "已重新生成分组数据、图片、音频和故事内容，等待提交上线。";
-      showToast("分组数据已重新生成", "当前版本已回到待提交上线状态。");
+      version.changeSummary = "已重新生成分组数据、图片、音频和故事内容，等待发布。";
+      showToast("分组数据已重新生成", "当前版本已回到内容生成完成状态。");
     }, 700);
     return;
   }
 
   if (action === "regenerate-one-group") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const groupItem = getGroupById(actionTarget.dataset.groupId);
     if (!groupItem) return;
     groupItem.story = `${groupItem.story}（本次已重新生成）`;
@@ -2563,46 +2531,37 @@ document.addEventListener("click", (event) => {
     data.storyInfo.storyAudioUrl = `${groupItem.id}-audio-${Date.now().toString(36)}.mp3`;
     data.storyInfo.storyImageUrl = `${groupItem.id}-image-${Date.now().toString(36)}.png`;
     syncGroupStoryLinesFromGenerated(groupItem);
-    const version = getVersion();
-    version.publishFailureReason = "";
-    version.changeSummary = "部分分组内容已重新生成，等待提交上线。";
-    if (version.status !== "PUBLISHED") version.status = "READY_TO_PUBLISH";
+    markGroupContentChanged(groupItem, "部分分组内容已重新生成，等待发布。");
     showToast("分组已重新生成", groupItem.title);
     return;
   }
 
   if (action === "regenerate-group-image") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const groupItem = getGroupById(actionTarget.dataset.groupId);
     if (!groupItem) return;
     groupItem.imageStatus = "已重新生成";
     groupItem.image = `${groupItem.id}-image-${Date.now().toString(36)}.png`;
     getGroupGeneratedData(groupItem).storyInfo.storyImageUrl = groupItem.image;
-    const version = getVersion();
-    version.status = "READY_TO_PUBLISH";
-    version.publishFailureReason = "";
-    version.changeSummary = "分组图片已重新生成，等待提交上线。";
+    markGroupContentChanged(groupItem, "分组图片已重新生成，等待发布。");
     showToast("图片已重新生成", groupItem.title);
     return;
   }
 
   if (action === "regenerate-group-audio") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const groupItem = getGroupById(actionTarget.dataset.groupId);
     if (!groupItem) return;
     groupItem.audioStatus = "已重新生成";
     groupItem.audio = `${groupItem.id}-audio-${Date.now().toString(36)}.mp3`;
     getGroupGeneratedData(groupItem).storyInfo.storyAudioUrl = groupItem.audio;
-    const version = getVersion();
-    version.status = "READY_TO_PUBLISH";
-    version.publishFailureReason = "";
-    version.changeSummary = "分组音频已重新生成，等待提交上线。";
+    markGroupContentChanged(groupItem, "分组音频已重新生成，等待发布。");
     showToast("音频已重新生成", groupItem.title);
     return;
   }
 
   if (action === "edit-group-story") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const groupItem = getGroupById(actionTarget.dataset.groupId);
     if (!groupItem) return;
     groupItem.storyStatus = "已编辑";
@@ -2617,16 +2576,13 @@ document.addEventListener("click", (event) => {
       en: line.en,
       cn: line.zh,
     }));
-    const version = getVersion();
-    version.status = "READY_TO_PUBLISH";
-    version.publishFailureReason = "";
-    version.changeSummary = "分组故事已编辑，等待提交上线。";
+    markGroupContentChanged(groupItem, "分组故事已编辑，等待发布。");
     showToast("故事已编辑", groupItem.title);
     return;
   }
 
   if (action === "add-group-story-line") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const groupItem = getGroupById(actionTarget.dataset.groupId);
     if (!groupItem) return;
     const data = getGroupGeneratedData(groupItem);
@@ -2636,13 +2592,13 @@ document.addEventListener("click", (event) => {
     });
     groupItem.storyStatus = "已编辑";
     syncGroupStoryLinesFromGenerated(groupItem);
-    markGeneratedContentChanged("新增了分组故事文本对象，等待提交上线。");
+    markGroupContentChanged(groupItem, "新增了分组故事文本对象，等待发布。");
     showToast("已新增故事句对象", groupItem.title);
     return;
   }
 
   if (action === "edit-group-story-line") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const groupItem = getGroupById(actionTarget.dataset.groupId);
     if (!groupItem) return;
     const data = getGroupGeneratedData(groupItem);
@@ -2651,7 +2607,7 @@ document.addEventListener("click", (event) => {
     line.cn = appendChangedLabel(line.cn);
     groupItem.storyStatus = "已编辑";
     syncGroupStoryLinesFromGenerated(groupItem);
-    markGeneratedContentChanged("修改了分组故事文本对象，等待提交上线。");
+    markGroupContentChanged(groupItem, "修改了分组故事文本对象，等待发布。");
     showToast("故事句已修改", groupItem.title);
     return;
   }
@@ -2683,7 +2639,7 @@ document.addEventListener("click", (event) => {
   }
 
   if (action === "add-word-pronunciation") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2692,13 +2648,13 @@ document.addEventListener("click", (event) => {
       pronAudioUrl: `${wordItem.text}-pron-${data.pronunciations.length + 1}-${Date.now().toString(36)}.mp3`,
     });
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("新增了单词发音对象，等待提交上线。");
+    markWordContentChanged(wordItem, "新增了单词发音对象，等待发布。");
     showToast("已新增发音对象", wordItem.text);
     return;
   }
 
   if (action === "add-word-meaning") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2717,13 +2673,13 @@ document.addEventListener("click", (event) => {
       meaningImageUrl: `${wordItem.text}-meaning-${sequence}.png`,
     });
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("新增了单词释义对象，等待提交上线。");
+    markWordContentChanged(wordItem, "新增了单词释义对象，等待发布。");
     showToast("已新增释义对象", wordItem.text);
     return;
   }
 
   if (action === "add-word-example") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2736,25 +2692,25 @@ document.addEventListener("click", (event) => {
       exampleEnAudioUrl: `${wordItem.text}-example-${meaning.sequence || 1}-${sequence}.mp3`,
     });
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("新增了单词例句对象，等待提交上线。");
+    markWordContentChanged(wordItem, "新增了单词例句对象，等待发布。");
     showToast("已新增例句对象", wordItem.text);
     return;
   }
 
   if (action === "add-word-distractor") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
     data.distractorWords.push(`distractor-${data.distractorWords.length + 1}`);
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("新增了单词干扰词，等待提交上线。");
+    markWordContentChanged(wordItem, "新增了单词干扰词，等待发布。");
     showToast("已新增干扰词", wordItem.text);
     return;
   }
 
   if (action === "delete-word-pronunciation") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2764,13 +2720,13 @@ document.addEventListener("click", (event) => {
     }
     data.pronunciations.splice(Number(actionTarget.dataset.index), 1);
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("删除了单词发音对象，等待提交上线。");
+    markWordContentChanged(wordItem, "删除了单词发音对象，等待发布。");
     showToast("发音对象已删除", wordItem.text);
     return;
   }
 
   if (action === "delete-word-meaning") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2783,13 +2739,13 @@ document.addEventListener("click", (event) => {
       meaning.sequence = index + 1;
     });
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("删除了单词释义对象，等待提交上线。");
+    markWordContentChanged(wordItem, "删除了单词释义对象，等待发布。");
     showToast("释义对象已删除", wordItem.text);
     return;
   }
 
   if (action === "delete-word-example") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2801,25 +2757,25 @@ document.addEventListener("click", (event) => {
     }
     meaning.examples.splice(Number(actionTarget.dataset.exampleIndex), 1);
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("删除了单词例句对象，等待提交上线。");
+    markWordContentChanged(wordItem, "删除了单词例句对象，等待发布。");
     showToast("例句已删除", wordItem.text);
     return;
   }
 
   if (action === "delete-word-distractor") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
     data.distractorWords.splice(Number(actionTarget.dataset.index), 1);
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("删除了单词干扰词，等待提交上线。");
+    markWordContentChanged(wordItem, "删除了单词干扰词，等待发布。");
     showToast("干扰词已删除", wordItem.text);
     return;
   }
 
   if (action === "edit-word-generated") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const data = getWordGeneratedData(wordItem);
@@ -2841,13 +2797,13 @@ document.addEventListener("click", (event) => {
       }
     }
     wordItem.detailGenerated = true;
-    markGeneratedContentChanged("修改了单词生成数据对象，等待提交上线。");
+    markWordContentChanged(wordItem, "修改了单词生成数据对象，等待发布。");
     showToast("当前值已修改", wordItem.text);
     return;
   }
 
   if (action === "regenerate-word-image") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const detail = getWordDetail(wordItem);
@@ -2857,16 +2813,13 @@ document.addEventListener("click", (event) => {
     const meaning = data.meanings[Number(actionTarget.dataset.meaningIndex) || 0];
     if (meaning) meaning.meaningImageUrl = detail.image;
     wordItem.detailGenerated = true;
-    const version = getVersion();
-    version.status = "READY_TO_PUBLISH";
-    version.publishFailureReason = "";
-    version.changeSummary = "单词详情图片已重新生成，等待提交上线。";
+    markWordContentChanged(wordItem, "单词详情图片已重新生成，等待发布。");
     showToast("单词图片已重新生成", wordItem.text);
     return;
   }
 
   if (action === "regenerate-word-audio") {
-    if (!ensureEditableVersion()) return;
+    if (!ensureContentEditableVersion()) return;
     const wordItem = findWord(actionTarget.dataset.wordId);
     if (!wordItem) return;
     const detail = getWordDetail(wordItem);
@@ -2875,35 +2828,13 @@ document.addEventListener("click", (event) => {
     const data = getWordGeneratedData(wordItem);
     if (data.pronunciations[0]) data.pronunciations[0].pronAudioUrl = detail.audio;
     wordItem.detailGenerated = true;
-    const version = getVersion();
-    version.status = "READY_TO_PUBLISH";
-    version.publishFailureReason = "";
-    version.changeSummary = "单词详情音频已重新生成，等待提交上线。";
+    markWordContentChanged(wordItem, "单词详情音频已重新生成，等待发布。");
     showToast("单词音频已重新生成", wordItem.text);
     return;
   }
 
   if (action === "open-publish") {
     state.modal = { type: "publish" };
-    render();
-    return;
-  }
-
-  if (action === "open-release-reject") {
-    state.modal = { type: "release-reject", requestId: actionTarget.dataset.requestId };
-    render();
-    return;
-  }
-
-  if (action === "open-release-online") {
-    state.modal = {
-      type: "confirm",
-      title: "确认上线",
-      body: "上线后学生立即可见，确定要上线吗？",
-      confirmText: "确认上线",
-      action: "online-release",
-      payload: { requestId: actionTarget.dataset.requestId },
-    };
     render();
     return;
   }
@@ -2958,10 +2889,6 @@ document.addEventListener("submit", (event) => {
     publishVersion(data.releaseNote);
     return;
   }
-  if (form.id === "release-reject-form") {
-    rejectRelease(data);
-    return;
-  }
   if (form.id === "create-version-form") {
     createVersionFromForm(data, form);
   }
@@ -2979,7 +2906,7 @@ function saveCategory(data) {
     const category = getCategory(data.categoryId);
     category.name = normalized;
     category.status = countPublishedBooks(category.id) > 0 ? "ENABLED" : "DISABLED";
-    showToast("分类已保存", "分类状态由已上线词书自动计算。");
+    showToast("分类已保存", "分类状态由已发布词书自动计算。");
   } else {
     const maxSort = state.categories.reduce((max, item) => Math.max(max, item.sort), 0);
     const category = { id: uid("cat"), name: normalized, status: "DISABLED", sort: maxSort + 1 };
@@ -3056,20 +2983,32 @@ function saveBook(data, form) {
 }
 
 function saveWord(data) {
-  if (!ensureEditableVersion()) return;
   const version = getVersion();
   const words = getSelectedWords();
   if (data.wordId) {
+    if (!ensureContentEditableVersion()) return;
     const wordItem = words.find((item) => item.id === data.wordId);
+    const previousText = wordItem.text;
     wordItem.text = data.text.trim();
-    wordItem.unit = data.unit.trim();
+    wordItem.unit = version.status === "PUBLISHED" ? wordItem.unit : data.unit.trim();
     wordItem.phonetic = data.phonetic.trim();
     wordItem.meaning = data.meaning.trim();
     wordItem.source = "人工修改";
     wordItem.changeType = wordItem.changeType === "新增" ? "新增" : "修改";
+    if (version.status === "PUBLISHED") {
+      (state.groups[version.id] || []).forEach((groupItem) => {
+        groupItem.words = groupItem.words.map((wordText) => (wordText === previousText ? wordItem.text : wordText));
+      });
+      markWordContentChanged(wordItem, "修改了已发布词书的单词内容，等待发布。");
+      state.modal = null;
+      showToast("单词内容已更新", "已标记为未发布，提交发布后立即上线。");
+      render();
+      return;
+    }
     version.changeSummary = "修改了单词信息，需重新确认词清单并生成内容。";
     showToast("单词已更新", wordItem.text);
   } else {
+    if (!ensureEditableVersion()) return;
     const newWord = word(uid("w"), data.unit.trim(), data.text.trim(), data.phonetic.trim(), data.meaning.trim(), "人工新增", "新增", false);
     const insertIndex = data.insertAfterWordId ? words.findIndex((item) => item.id === data.insertAfterWordId) : -1;
     if (insertIndex >= 0) {
@@ -3090,76 +3029,37 @@ function saveWord(data) {
 function publishVersion(releaseNote) {
   const version = getVersion();
   const bookItem = getBook();
-  if (!version || !["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(version.status) || getActiveReleaseRequest(version.id)) return;
-  const request = {
-    id: uid("rel"),
-    textbookId: bookItem.id,
-    versionId: version.id,
-    onlineVersionId: bookItem.onlineVersionId || "",
-    status: "CHECKING",
-    submitter: "当前用户",
-    submittedAt: nowText(),
-    checkedAt: "",
-    onlineAt: "",
-    releaseNote: releaseNote.trim(),
-    reason: "",
-  };
-  state.releaseRequests.unshift(request);
+  const contentUpdate = version?.status === "PUBLISHED" && version.hasPendingContentChanges;
+  if (!version || !(["READY_TO_PUBLISH", "PUBLISH_FAILED"].includes(version.status) || contentUpdate)) return;
+  version.publishMode = contentUpdate ? "content-update" : "version-release";
   version.status = "PUBLISH_CHECKING";
   version.releaseNote = releaseNote.trim();
   version.publishFailureReason = "";
+  version.submittedAt = nowText();
   state.modal = null;
-  state.page = "release";
-  state.selectedReleaseStatus = "CHECKING";
-  window.history.replaceState(null, "", "#release");
-  showToast("已提交上线流程", `${bookItem.name} V${version.no} 已进入背单词词书上线页，尚未线上生效。`);
-}
-
-function rejectRelease(data) {
-  const request = state.releaseRequests.find((item) => item.id === data.requestId);
-  if (!request || !["CHECKING", "READY_TO_ONLINE"].includes(request.status)) return;
-  const reason = data.reason.trim();
-  if (!reason) return;
-  markReleaseFailed(request, "REJECTED", `驳回原因：${reason}`);
-  state.selectedReleaseStatus = "FAILED";
-  state.modal = null;
-  state.selectedTextbookId = request.textbookId;
-  state.selectedVersionId = request.versionId;
   state.page = "detail";
-  state.detailTab = "words";
-  resetWordFilters();
-  resetGroupFilters();
-  window.history.replaceState(null, "", `#detail/${state.selectedTextbookId}`);
-  showToast("已驳回上线", "驳回原因已回写到词书详情页。", "danger");
+  window.history.replaceState(null, "", `#detail/${bookItem.id}`);
+  showToast("已提交发布", `${bookItem.name} V${version.no} 已进入发布中，后台会自动执行校验与上线。`);
 }
 
-function markReleaseFailed(request, status, reason) {
-  const version = getVersion(request.versionId);
-  request.status = status;
-  request.checkedAt ||= nowText();
-  request.reason = reason;
-  if (version) {
-    version.status = "PUBLISH_FAILED";
-    version.publishFailureReason = reason;
-  }
-}
-
-function onlineRelease(requestId) {
-  const request = state.releaseRequests.find((item) => item.id === requestId);
-  if (!request || !["CHECKING", "READY_TO_ONLINE"].includes(request.status)) return;
-  const version = getVersion(request.versionId);
-  const bookItem = getBook(request.textbookId);
+function completePublish(versionId = state.selectedVersionId, options = {}) {
+  const version = getVersion(versionId);
+  const bookItem = getBook(version?.textbookId);
   if (!version || !bookItem) return;
-  request.status = "ONLINE";
-  request.onlineAt = nowText();
-  request.reason = "已上线，线上立即生效。";
   version.status = "PUBLISHED";
-  version.publishedAt = request.onlineAt;
+  version.publishedAt = nowText();
   version.publishFailureReason = "";
+  version.hasPendingContentChanges = false;
+  version.publishMode = "";
+  (state.words[version.id] || []).forEach((item) => {
+    item.publishState = "已发布";
+  });
+  (state.groups[version.id] || []).forEach((item) => {
+    item.publishState = "已发布";
+  });
   bookItem.onlineVersionId = version.id;
   bookItem.status = "PUBLISHED";
   bookItem.displayWordCount = (state.words[version.id] || []).length;
-  state.selectedReleaseStatus = "ONLINE";
   state.modal = null;
   state.selectedTextbookId = bookItem.id;
   state.selectedVersionId = version.id;
@@ -3168,14 +3068,14 @@ function onlineRelease(requestId) {
   resetWordFilters();
   resetGroupFilters();
   window.history.replaceState(null, "", `#detail/${bookItem.id}`);
-  showToast("发布成功", `${bookItem.name} V${version.no} 已上线，学生端立即可见。`);
+  showToast(options.contentUpdate ? "内容修改已发布" : "发布成功", `${bookItem.name} V${version.no} 已发布，学生端可见。`);
 }
 
 function runConfirmAction() {
   const modal = state.modal;
   if (!modal || modal.type !== "confirm") return;
-  if (modal.action === "online-release") {
-    onlineRelease(modal.payload.requestId);
+  if (modal.action === "complete-publish") {
+    completePublish(modal.payload.versionId);
     return;
   }
   if (modal.action === "delete-category") {
@@ -3208,7 +3108,7 @@ function runConfirmAction() {
     delete state.groups[versionId];
     state.modal = null;
     selectDefaultVersion(version.textbookId);
-    showToast("版本已删除", "未上线版本已删除。");
+    showToast("版本已删除", "未发布版本已删除。");
     return;
   }
   if (modal.action === "delete-word") {
