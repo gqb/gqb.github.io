@@ -27,7 +27,8 @@ const stageOptions = ["小学", "初中", "高中", "大学", "其他"];
 
 const seed = {
   page: "catalog",
-  selectedCategoryId: "cat-hot",
+  selectedCategoryId: "all",
+  expandedBookIds: [],
   selectedTextbookId: "book-gaokao-high",
   selectedVersionId: "ver-gaokao-v2",
   detailTab: "words",
@@ -138,6 +139,10 @@ const seed = {
       id: "ver-gaokao-v2",
       textbookId: "book-gaokao-high",
       no: 2,
+      name: "高考高频词补充版",
+      cover: "blue",
+      screenshotCount: 14,
+      displayWordCount: 1712,
       status: "LIST_CONFIRMING",
       baseVersionId: "ver-gaokao-v1",
       changeSummary: "补充词书截图识别结果，待确认新增词条与排序。",
@@ -597,8 +602,20 @@ function renderSidebar() {
 }
 
 function renderCatalogPage() {
+  const allSelected = state.selectedCategoryId === "all";
   const selectedCategory = getCategory();
-  const books = sortedBySort(state.textbooks.filter((bookItem) => bookItem.categoryId === state.selectedCategoryId));
+  const categoryOrder = new Map(state.categories.map((category) => [category.id, category.sort]));
+  const books = state.textbooks
+    .filter((bookItem) => allSelected || bookItem.categoryId === state.selectedCategoryId)
+    .sort((a, b) => {
+      if (allSelected) {
+        const categoryDiff = (categoryOrder.get(a.categoryId) || 999) - (categoryOrder.get(b.categoryId) || 999);
+        if (categoryDiff !== 0) return categoryDiff;
+      }
+      return a.sort - b.sort;
+    });
+  const categoryTitle = allSelected ? "全部" : selectedCategory?.name || "未选择分类";
+  const emptyText = allSelected ? "暂无词书" : "当前分类下暂无词书";
   return `
     <div class="catalog-page">
       <header class="page-header catalog-header">
@@ -611,27 +628,17 @@ function renderCatalogPage() {
       <div class="catalog-layout">
         <section class="panel catalog-panel">
           <div class="panel-header">
-            <div class="panel-title">
-              <i data-lucide="folder-tree"></i>
+            <div class="catalog-list-head">
+              <label class="catalog-category-filter" for="catalog-category-select">
+                <span>词书分类</span>
+                <select id="catalog-category-select" name="catalogCategoryId" aria-label="词书分类">
+                  <option value="all" ${allSelected ? "selected" : ""}>全部</option>
+                  ${sortedBySort(state.categories).map((category) => `<option value="${category.id}" ${category.id === state.selectedCategoryId ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}
+                </select>
+              </label>
               <div>
-                <h2>词书分类</h2>
-                <small>支持新增、修改、删除</small>
-              </div>
-            </div>
-            <button class="btn primary" type="button" data-action="open-category-form"><i data-lucide="plus"></i>新增</button>
-          </div>
-          <div class="category-list">
-            ${sortedBySort(state.categories).map(renderCategoryRow).join("")}
-          </div>
-        </section>
-
-        <section class="panel catalog-panel">
-          <div class="panel-header">
-            <div class="panel-title">
-              <i data-lucide="book-copy"></i>
-              <div>
-                <h2>${escapeHtml(selectedCategory?.name || "未选择分类")} / 词书列表</h2>
-                <small>新增词书后自动创建首个草稿版本 V1</small>
+                <h2>${escapeHtml(categoryTitle)} / 词书列表</h2>
+                <small>默认展示全部词书；切换分类后仅展示当前分类下的词书。新增词书后自动创建首个草稿版本 V1</small>
               </div>
             </div>
             <div class="toolbar">
@@ -653,7 +660,7 @@ function renderCatalogPage() {
                 </tr>
               </thead>
               <tbody>
-                ${books.length ? books.map(renderBookRow).join("") : renderEmptyTableRow("当前分类下暂无词书")}
+                ${books.length ? books.map(renderBookRow).join("") : renderEmptyTableRow(emptyText)}
               </tbody>
             </table>
           </div>
@@ -693,34 +700,93 @@ function renderCategoryRow(category) {
   `;
 }
 
+function getPrimaryBookVersion(bookItem, versions = getBookVersions(bookItem.id)) {
+  return versions.find((item) => item.id === bookItem.onlineVersionId) || versions[0] || null;
+}
+
+function getVersionDisplayInfo(bookItem, version) {
+  const words = version ? state.words[version.id] || [] : [];
+  return {
+    name: version?.name || bookItem.name,
+    publisher: version?.publisher || bookItem.publisher,
+    stage: version?.stage || getBookStage(bookItem),
+    volume: version?.volume || bookItem.volume,
+    creator: version?.creator || bookItem.creator,
+    cover: version?.cover || bookItem.cover,
+    coverImageName: version?.coverImageName || bookItem.coverImageName || "",
+    screenshotCount: version?.screenshotCount ?? bookItem.screenshotCount,
+    wordCount: version?.displayWordCount ?? (words.length || bookItem.displayWordCount || 0),
+  };
+}
+
 function renderBookRow(bookItem) {
-  const onlineVersion = state.versions.find((item) => item.id === bookItem.onlineVersionId);
-  const deletable = !hasPublishedVersion(bookItem.id);
+  const versions = getBookVersions(bookItem.id);
+  const primaryVersion = getPrimaryBookVersion(bookItem, versions);
+  if (!primaryVersion) return "";
+  const otherVersions = versions.filter((item) => item.id !== primaryVersion.id);
+  const expanded = otherVersions.length > 0 && state.expandedBookIds.includes(bookItem.id);
   return `
-    <tr data-action="open-book" data-book-id="${bookItem.id}">
+    ${renderBookVersionTableRow(bookItem, primaryVersion, {
+      primary: true,
+      expanded,
+      hasOtherVersions: otherVersions.length > 0,
+    })}
+    ${expanded ? otherVersions.map((version) => renderBookVersionTableRow(bookItem, version, { child: true })).join("") : ""}
+  `;
+}
+
+function renderBookVersionTableRow(bookItem, version, options = {}) {
+  const view = getVersionDisplayInfo(bookItem, version);
+  const base = version.baseVersionId ? getVersion(version.baseVersionId) : null;
+  const isOnline = bookItem.onlineVersionId === version.id;
+  const isPrimary = Boolean(options.primary);
+  const isChild = Boolean(options.child);
+  const canDeleteVersion = !["PUBLISHED", "PUBLISH_CHECKING"].includes(version.status);
+  const rowClass = [
+    "book-version-table-row",
+    isPrimary ? "book-primary-version-row" : "",
+    isChild ? "book-child-version-row" : "",
+    options.expanded ? "book-row-expanded" : "",
+  ].filter(Boolean).join(" ");
+  const statusConfig = isOnline && version.status === "PUBLISHED" ? bookStatus.PUBLISHED : versionStatus[version.status];
+  const statusMeta = isOnline ? `线上 V${version.no}` : base ? `基于 V${base.no}` : `版本 V${version.no}`;
+  return `
+    <tr class="${rowClass}" data-action="open-book-version" data-book-id="${bookItem.id}" data-version-id="${version.id}">
       <td>
-        <div class="book-cell">
-          <div class="book-cover cover-${bookItem.cover}">词书</div>
+        <div class="book-cell ${isChild ? "book-cell-child" : ""}">
+          ${
+            isPrimary && options.hasOtherVersions
+              ? `<button class="icon-btn book-expand-btn" type="button" data-action="toggle-book-versions" data-book-id="${bookItem.id}" title="${options.expanded ? "收起版本" : "展开版本"}">
+                  <i data-lucide="${options.expanded ? "chevron-down" : "chevron-right"}"></i>
+                </button>`
+              : isChild
+                ? `<span class="book-version-branch"></span>`
+                : `<span class="book-expand-placeholder"></span>`
+          }
+          <div class="book-cover cover-${view.cover}">词书</div>
           <div>
-            <div class="book-name">${escapeHtml(bookItem.name)}</div>
-            <div class="book-extra">截图 ${bookItem.screenshotCount} 张 · 点击进入详情</div>
+            <div class="book-name">
+              <span>${escapeHtml(view.name)}</span>
+              <em class="book-version-chip">V${version.no}</em>
+            </div>
+            <div class="book-extra">截图 ${view.screenshotCount} 张${view.coverImageName ? ` · ${escapeHtml(view.coverImageName)}` : ""} · 点击进入版本详情</div>
           </div>
         </div>
       </td>
-      <td>${escapeHtml(bookItem.publisher)}</td>
-      <td>${escapeHtml(getBookStage(bookItem))}</td>
-      <td>${escapeHtml(bookItem.volume)}</td>
-      <td>${escapeHtml(bookItem.creator)}</td>
-      <td>${Number(bookItem.displayWordCount || 0).toLocaleString()}</td>
+      <td>${escapeHtml(view.publisher)}</td>
+      <td>${escapeHtml(view.stage)}</td>
+      <td>${escapeHtml(view.volume)}</td>
+      <td>${escapeHtml(view.creator)}</td>
+      <td>${Number(view.wordCount || 0).toLocaleString()}</td>
       <td>
-        ${badge(bookStatus[bookItem.status])}
-        <div class="book-extra">${onlineVersion ? `线上 V${onlineVersion.no}` : "暂无线上版本"}</div>
+        ${badge(statusConfig)}
+        <div class="book-extra">${escapeHtml(statusMeta)}</div>
       </td>
       <td>
         <div class="row-actions">
-          <button class="icon-btn" type="button" data-action="open-book" data-book-id="${bookItem.id}" title="进入详情"><i data-lucide="square-arrow-out-up-right"></i></button>
-          <button class="icon-btn" type="button" data-action="edit-book" data-book-id="${bookItem.id}" title="修改词书"><i data-lucide="pencil"></i></button>
-          ${deletable ? `<button class="icon-btn danger" type="button" data-action="confirm-delete-book" data-book-id="${bookItem.id}" title="删除词书"><i data-lucide="trash-2"></i></button>` : ""}
+          <button class="icon-btn" type="button" data-action="open-book-version" data-book-id="${bookItem.id}" data-version-id="${version.id}" title="进入版本详情"><i data-lucide="square-arrow-out-up-right"></i></button>
+          <button class="icon-btn" type="button" data-action="open-book-version" data-book-id="${bookItem.id}" data-version-id="${version.id}" title="修改版本"><i data-lucide="pencil"></i></button>
+          ${canDeleteVersion ? `<button class="icon-btn danger" type="button" data-action="confirm-delete-version-from-list" data-book-id="${bookItem.id}" data-version-id="${version.id}" title="删除版本"><i data-lucide="trash-2"></i></button>` : ""}
         </div>
       </td>
     </tr>
@@ -1016,6 +1082,7 @@ function renderEmptyWords(version) {
 function renderUnitWords(unit, words, version) {
   const structuralEditable = !["PUBLISHED", "PUBLISH_CHECKING"].includes(version.status);
   const actionWidth = structuralEditable ? "290px" : version.status === "PUBLISHED" ? "138px" : "90px";
+  const hasGroups = (state.groups[version.id] || []).length > 0;
   return `
     <section class="word-unit">
       <div class="unit-head">
@@ -1030,19 +1097,33 @@ function renderUnitWords(unit, words, version) {
           <tr>
             <th style="width: 26%;">单词</th>
             <th>释义</th>
+            ${hasGroups ? `<th style="width: 20%;">所属单词组</th>` : ""}
             <th style="width: 18%;">状态</th>
             <th style="width: ${actionWidth};">操作</th>
           </tr>
         </thead>
         <tbody>
-          ${words.map((item) => renderWordRow(item, version)).join("")}
+          ${words.map((item) => renderWordRow(item, version, hasGroups)).join("")}
         </tbody>
       </table>
     </section>
   `;
 }
 
-function renderWordRow(item, version) {
+function getWordGroupTitles(wordItem, version) {
+  const wordText = wordItem.text.toLowerCase();
+  return (state.groups[version.id] || [])
+    .filter((groupItem) => (groupItem.words || []).some((word) => String(word).toLowerCase() === wordText))
+    .map((groupItem) => groupItem.title);
+}
+
+function renderWordGroupCell(wordItem, version) {
+  const titles = getWordGroupTitles(wordItem, version);
+  if (!titles.length) return `<span class="muted">-</span>`;
+  return `<div class="word-group-tags">${titles.map((title) => `<span class="tag word-group-tag">${escapeHtml(title)}</span>`).join("")}</div>`;
+}
+
+function renderWordRow(item, version, hasGroups = false) {
   const structuralEditable = !["PUBLISHED", "PUBLISH_CHECKING"].includes(version.status);
   const contentEditable = !isPublishingLocked(version);
   const detailButton = item.detailGenerated
@@ -1069,6 +1150,7 @@ function renderWordRow(item, version) {
         <div class="word-pron">ID：${escapeHtml(item.id)} · ${escapeHtml(item.phonetic)}</div>
       </td>
       <td>${escapeHtml(item.meaning)}</td>
+      ${hasGroups ? `<td>${renderWordGroupCell(item, version)}</td>` : ""}
       <td>${badge(getItemPublishBadge(item, version))}</td>
       <td>
         <div class="row-actions">
@@ -1248,6 +1330,8 @@ function renderBookModal() {
   const isEdit = Boolean(bookItem);
   const title = bookItem ? "修改词书" : "新建词书";
   const selectedStage = bookItem ? getBookStage(bookItem) : "高中";
+  const defaultCategoryId = state.selectedCategoryId === "all" ? sortedBySort(state.categories)[0]?.id || "" : state.selectedCategoryId;
+  const selectedCategoryId = bookItem?.categoryId || defaultCategoryId;
   return modalShell({
     size: "lg",
     title,
@@ -1261,7 +1345,7 @@ function renderBookModal() {
         <div class="form-row">
           <label>所属分类</label>
           <select name="categoryId">
-            ${sortedBySort(state.categories).map((category) => `<option value="${category.id}" ${category.id === (bookItem?.categoryId || state.selectedCategoryId) ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}
+            ${sortedBySort(state.categories).map((category) => `<option value="${category.id}" ${category.id === selectedCategoryId ? "selected" : ""}>${escapeHtml(category.name)}</option>`).join("")}
           </select>
         </div>
         <div class="form-row">
@@ -2348,11 +2432,32 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  if (action === "toggle-book-versions") {
+    const bookId = actionTarget.dataset.bookId;
+    state.expandedBookIds = state.expandedBookIds.includes(bookId)
+      ? state.expandedBookIds.filter((id) => id !== bookId)
+      : [...state.expandedBookIds, bookId];
+    render();
+    return;
+  }
+
   if (action === "open-book") {
     state.selectedTextbookId = actionTarget.dataset.bookId;
     state.page = "detail";
     state.detailTab = "words";
     selectDefaultVersion(state.selectedTextbookId);
+    resetWordFilters();
+    resetGroupFilters();
+    window.history.replaceState(null, "", `#detail/${state.selectedTextbookId}`);
+    render();
+    return;
+  }
+
+  if (action === "open-book-version") {
+    state.selectedTextbookId = actionTarget.dataset.bookId;
+    state.selectedVersionId = actionTarget.dataset.versionId;
+    state.page = "detail";
+    state.detailTab = "words";
     resetWordFilters();
     resetGroupFilters();
     window.history.replaceState(null, "", `#detail/${state.selectedTextbookId}`);
@@ -2379,6 +2484,20 @@ document.addEventListener("click", (event) => {
       danger: !hasPublished,
       action: hasPublished ? "noop" : "delete-book",
       payload: { bookId: bookItem.id },
+    });
+    return;
+  }
+
+  if (action === "confirm-delete-version-from-list") {
+    const version = getVersion(actionTarget.dataset.versionId);
+    if (!version || ["PUBLISHED", "PUBLISH_CHECKING"].includes(version.status)) return;
+    openConfirm({
+      title: "删除版本",
+      body: `确认要删除 V${version.no} 吗？仅未发布版本允许删除。`,
+      confirmText: "删除",
+      danger: true,
+      action: "delete-version",
+      payload: { versionId: version.id },
     });
     return;
   }
@@ -2851,6 +2970,11 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("change", (event) => {
   const target = event.target;
+  if (target.name === "catalogCategoryId") {
+    state.selectedCategoryId = target.value;
+    render();
+    return;
+  }
   if (target.name === "wordUnitFilter" && target.closest("#word-filter-form")) {
     state.wordUnitFilter = target.value || "all";
     render();
