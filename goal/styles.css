@@ -1041,6 +1041,172 @@ button {
   box-shadow: -18px 0 50px rgba(13, 20, 33, 0.2);
 }
 
+.target-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(28, 34, 47, 0.62);
+}
+
+.target-dialog {
+  width: min(640px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid rgba(223, 230, 240, 0.9);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 60px rgba(16, 24, 40, 0.26);
+}
+
+.target-dialog-compact {
+  width: min(480px, calc(100vw - 32px));
+  text-align: center;
+}
+
+.target-dialog-icon {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eaf0ff;
+  color: var(--primary);
+}
+
+.target-dialog h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.target-dialog-copy {
+  margin: 12px 0 18px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.target-school-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 18px 0 22px;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f6f9ff;
+  text-align: left;
+}
+
+.target-school-preview strong,
+.target-school-preview small {
+  display: block;
+}
+
+.target-school-preview small {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.target-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.target-dialog-compact .target-dialog-actions {
+  justify-content: center;
+}
+
+.pledge-school-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pledge-school-logo {
+  display: grid;
+  width: 68px;
+  height: 68px;
+  place-items: center;
+  border-radius: 50%;
+  background: #eef4ff;
+  color: var(--primary-dark);
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.pledge-school-head small,
+.pledge-school-head p,
+.pledge-signature small {
+  color: var(--muted);
+}
+
+.pledge-school-head h2 {
+  margin: 4px 0;
+  font-size: 32px;
+}
+
+.pledge-school-head p {
+  margin: 0;
+}
+
+.pledge-oath {
+  margin: 22px 0;
+  padding: 22px;
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 242, 216, 0.78), rgba(234, 240, 255, 0.9)),
+    #fff;
+  color: #344054;
+  font-size: 18px;
+  line-height: 1.8;
+}
+
+.pledge-oath p {
+  margin: 0;
+}
+
+.pledge-oath p + p {
+  margin-top: 10px;
+  color: var(--primary-dark);
+  font-weight: 700;
+}
+
+.pledge-form {
+  display: grid;
+  gap: 14px;
+}
+
+.pledge-signature {
+  display: grid;
+  gap: 8px;
+  color: #344054;
+  font-weight: 700;
+}
+
+.pledge-signature input {
+  width: 100%;
+  height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  outline: none;
+}
+
+.pledge-signature input:focus {
+  border-color: rgba(77, 125, 242, 0.68);
+  box-shadow: 0 0 0 3px rgba(77, 125, 242, 0.12);
+}
+
 .drawer-section {
   margin-top: 30px;
 }
@@ -1264,6 +1430,24 @@ button {
   .subject-grid,
   .chip-grid {
     grid-template-columns: 1fr;
+  }
+
+  .target-dialog {
+    padding: 22px;
+  }
+
+  .pledge-school-head {
+    grid-template-columns: 1fr;
+  }
+
+  .target-dialog-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .target-dialog-actions .primary-button,
+  .target-dialog-actions .secondary-button {
+    width: 100%;
   }
 
   .target-score-actions {

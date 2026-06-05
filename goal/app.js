@@ -123,6 +123,26 @@ const subjects = [
 
 const examTypes = ["月考", "模考", "期中", "期末", "联考", "周测", "普通"];
 
+const studentProfile = {
+  name: "诸葛孔明",
+  school: "蜀山高中",
+  className: "高一(2)班",
+  avatar: "诸",
+};
+
+const targetPledgeTexts = [
+  "日积跬步，终至千里。愿你考入理想的学府！",
+  "脚踏实地，步步生花。愿你奔赴心中的大学！",
+  "坚持不辍，未来可期。愿你抵达理想的校园！",
+  "笃行致远，功到自成。愿你圆梦目标大学！",
+  "一路努力，一路靠近。愿你考上向往的学府！",
+  "星光不负赶路人。愿你走进理想的大学！",
+  "每一份坚持，都在靠近答案。愿你成功上岸！",
+  "心有所向，行必能至。愿你实现大学目标！",
+  "稳扎稳打，终有回响。愿你考入梦校！",
+  "今日多一分努力，明日多一分从容。愿你奔向理想学府！",
+];
+
 const defaultReportSubjects = subjects.map(([name, score], index) => ({
   name,
   score: index < 3 ? score : 72,
@@ -175,6 +195,8 @@ const defaultState = {
   },
   activeReportId: "exam-2026-06-monthly",
   targetEditorOpen: false,
+  targetConfirmStep: "",
+  pendingTargetSchoolId: "",
   reports: structuredClone(defaultReports),
   goal: {
     currentTotal: "",
@@ -234,6 +256,8 @@ function loadState() {
     if (!visibleViews.includes(nextState.view)) {
       nextState.view = defaultState.view;
     }
+    nextState.targetConfirmStep = "";
+    nextState.pendingTargetSchoolId = "";
     return nextState;
   } catch {
     return structuredClone(defaultState);
@@ -285,6 +309,10 @@ function getSchool(id) {
 
 function getTargetSchool() {
   return getSchool(state.targetSchoolId);
+}
+
+function getPendingTargetSchool() {
+  return getSchool(state.pendingTargetSchoolId || state.selectedSchoolId);
 }
 
 function getActiveReport() {
@@ -349,6 +377,16 @@ function showToast(message) {
   }, 2400);
 }
 
+function clearTargetConfirm() {
+  state.targetConfirmStep = "";
+  state.pendingTargetSchoolId = "";
+}
+
+function targetPledgeText(school) {
+  const schoolIndex = schools.findIndex((item) => item.id === school.id);
+  return targetPledgeTexts[Math.max(0, schoolIndex) % targetPledgeTexts.length];
+}
+
 function tagList(school) {
   return [...school.levels, school.type, school.city];
 }
@@ -384,6 +422,9 @@ function render() {
   if (state.view === "schools") app.innerHTML = renderSchools();
   if (state.view === "profile") app.innerHTML = renderProfile();
   if (state.view === "goals") app.innerHTML = renderGoals();
+  if (state.targetConfirmStep) {
+    app.insertAdjacentHTML("beforeend", renderTargetConfirmModal());
+  }
 
   syncIcons();
 }
@@ -394,10 +435,10 @@ function renderHome() {
   return `
     <section class="view home-panel">
       <div class="student-head">
-        <div class="avatar">祁</div>
+        <div class="avatar">${escapeHtml(studentProfile.avatar)}</div>
         <div class="student-meta">
-          <h1>祁昱</h1>
-          <p>字节 AI 课中学 · 高一(2)班</p>
+          <h1>${escapeHtml(studentProfile.name)}</h1>
+          <p>${escapeHtml(studentProfile.school)} · ${escapeHtml(studentProfile.className)}</p>
         </div>
         <div class="study-group">
           <span class="study-group-icon"><i data-lucide="book-open-check"></i></span>
@@ -682,6 +723,74 @@ function renderFilterDrawer() {
   `;
 }
 
+function renderTargetConfirmModal() {
+  const school = getPendingTargetSchool();
+  if (state.targetConfirmStep === "pledge") {
+    return `
+      <div class="target-confirm-backdrop" data-target-confirm-backdrop>
+        <section class="target-dialog target-pledge-dialog" role="dialog" aria-modal="true" aria-labelledby="target-pledge-title">
+          <div class="pledge-school-head">
+            <span class="pledge-school-logo">${escapeHtml(school.mark)}</span>
+            <div>
+              <small>目标大学军令状</small>
+              <h2 id="target-pledge-title">${escapeHtml(school.name)}</h2>
+              <p>${escapeHtml(school.type)} · ${escapeHtml(school.city)} · ${school.levels.map(escapeHtml).join(" · ")}</p>
+            </div>
+          </div>
+
+          <div class="pledge-oath">
+            <p>我确定以 <strong>${escapeHtml(school.name)}</strong> 作为我的奋斗目标，为此我将不断努力！</p>
+            <p>${escapeHtml(targetPledgeText(school))}</p>
+          </div>
+
+          <form id="target-pledge-form" class="pledge-form">
+            <label class="pledge-signature" for="targetSignature">
+              <span>签署姓名</span>
+              <input id="targetSignature" name="targetSignature" type="text" placeholder="请输入你的姓名" autocomplete="off" />
+              <small>只能输入学生本人姓名：${escapeHtml(studentProfile.name)}</small>
+            </label>
+            <div id="target-pledge-validation" class="validation"></div>
+            <div class="target-dialog-actions">
+              <button type="button" class="secondary-button" data-target-confirm-back>
+                <i data-lucide="arrow-left"></i>
+                返回
+              </button>
+              <button type="submit" class="primary-button">
+                <i data-lucide="badge-check"></i>
+                确认目标
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="target-confirm-backdrop" data-target-confirm-backdrop>
+      <section class="target-dialog target-dialog-compact" role="dialog" aria-modal="true" aria-labelledby="target-confirm-title">
+        <span class="target-dialog-icon"><i data-lucide="flag"></i></span>
+        <h2 id="target-confirm-title">确定选择此大学为目标大学吗</h2>
+        <p class="target-dialog-copy">设置目标成绩慎重！本次设置 30 天后才能修改目标哦</p>
+        <div class="target-school-preview">
+          <span class="pledge-school-logo">${escapeHtml(school.mark)}</span>
+          <div>
+            <strong>${escapeHtml(school.name)}</strong>
+            <small>${escapeHtml(school.province)} · ${escapeHtml(school.type)} · ${escapeHtml(school.levels[0])}</small>
+          </div>
+        </div>
+        <div class="target-dialog-actions">
+          <button type="button" class="secondary-button" data-close-target-confirm>我再想想</button>
+          <button type="button" class="primary-button" data-target-confirm-next>
+            <i data-lucide="check"></i>
+            确定
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderProfile() {
   const school = getTargetSchool();
   const latestReport = getLatestReport();
@@ -689,10 +798,10 @@ function renderProfile() {
   return `
     <section class="view profile-layout">
       <div class="panel profile-student-strip">
-        <div class="profile-avatar">祁</div>
+        <div class="profile-avatar">${escapeHtml(studentProfile.avatar)}</div>
         <div class="profile-student-text">
-          <h1>祁昱</h1>
-          <p>字节 AI 课中学 · 高一(2)班</p>
+          <h1>${escapeHtml(studentProfile.name)}</h1>
+          <p>${escapeHtml(studentProfile.school)} · ${escapeHtml(studentProfile.className)}</p>
         </div>
         <div class="profile-student-meta">
           <span class="tag is-strong">学生本人</span>
@@ -1030,6 +1139,31 @@ function handleTargetScoreSubmit(event) {
   showToast("目标成绩已保存");
 }
 
+function handleTargetPledgeSubmit(event) {
+  event.preventDefault();
+  const selected = getPendingTargetSchool();
+  const formData = new FormData(event.target);
+  const signature = String(formData.get("targetSignature") || "").trim();
+  const validation = document.querySelector("#target-pledge-validation");
+
+  if (signature !== studentProfile.name) {
+    validation.innerHTML = `<div>请签署学生本人姓名：${escapeHtml(studentProfile.name)}</div>`;
+    validation.classList.add("is-visible");
+    return;
+  }
+
+  state.targetSchoolId = selected.id;
+  state.selectedSchoolId = selected.id;
+  state.view = "profile";
+  clearTargetConfirm();
+  if (window.location.hash.replace("#", "") !== "profile") {
+    window.history.replaceState(null, "", "#profile");
+  }
+  saveState();
+  render();
+  showToast(`已点亮 ${selected.name}，目标档案已更新`);
+}
+
 function handleReportSubmit(event) {
   event.preventDefault();
   const formData = new FormData(event.target);
@@ -1086,6 +1220,24 @@ document.addEventListener("click", (event) => {
   const viewButton = event.target.closest("[data-view]");
   if (viewButton) {
     setView(viewButton.dataset.view);
+    return;
+  }
+
+  if (event.target.matches("[data-target-confirm-backdrop]") || event.target.closest("[data-close-target-confirm]")) {
+    clearTargetConfirm();
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-target-confirm-next]")) {
+    state.targetConfirmStep = "pledge";
+    render();
+    return;
+  }
+
+  if (event.target.closest("[data-target-confirm-back]")) {
+    state.targetConfirmStep = "confirm";
+    render();
     return;
   }
 
@@ -1191,17 +1343,10 @@ document.addEventListener("click", (event) => {
   }
 
   if (event.target.closest("[data-set-target]")) {
-    const selected = getSchool(state.selectedSchoolId);
-    const current = getTargetSchool();
-    const shouldChange =
-      selected.id === current.id ||
-      window.confirm(`将目标大学从「${current.name}」改为「${selected.name}」，是否继续？`);
-    if (!shouldChange) return;
-    state.targetSchoolId = selected.id;
-    state.view = "profile";
-    saveState();
+    state.pendingTargetSchoolId = state.selectedSchoolId;
+    state.targetConfirmStep = "confirm";
     render();
-    showToast(`已将 ${selected.name} 设为目标大学`);
+    return;
   }
 });
 
@@ -1228,6 +1373,11 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("submit", (event) => {
+  if (event.target.id === "target-pledge-form") {
+    handleTargetPledgeSubmit(event);
+    return;
+  }
+
   if (event.target.id === "target-score-form") {
     handleTargetScoreSubmit(event);
   }
