@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>目标大学 Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">目</span>
+          <div>
+            <strong>目标大学</strong>
+            <span>学生端流程 Demo</span>
+          </div>
+        </div>
+        <nav class="view-tabs" aria-label="Demo 页面">
+          <button type="button" class="tab-button" data-view="profile">
+            <i data-lucide="badge-check"></i>
+            目标档案
+          </button>
+          <button type="button" class="tab-button" data-view="schools">
+            <i data-lucide="school"></i>
+            选目标大学
+          </button>
+          <button type="button" class="tab-button" data-view="goals">
+            <i data-lucide="pencil-line"></i>
+            成绩填报
+          </button>
+        </nav>
+      </header>
+
+      <main id="app" class="main-stage" aria-live="polite"></main>
+      <div id="toast" class="toast" role="status"></div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
